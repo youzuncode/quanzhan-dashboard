@@ -1,14 +1,20 @@
 import { useState, useMemo } from 'react'
 import { RULE_DEFS, PLAN_HIST_LOG, plans as defaultPlans } from '../lib/mockData'
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Line, ComposedChart, Bar } from 'recharts'
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Line, ComposedChart, Bar, ReferenceLine } from 'recharts'
 
-import type { PlanData } from '../lib/mockData'
+import type { PlanData, RuleDef } from '../lib/mockData'
 import { loadJSON, saveJSON } from '../lib/persist'
 
 interface Props {
   onClose: () => void
   plans?: PlanData[]
 }
+
+// 自定义规则:在内置 RuleDef 基础上加 custom 标记与方向权重(pp/天,正=控本降费比,负=放量抬费比)
+interface CustomRule extends RuleDef { custom: true; weight: number }
+// 规则作用范围
+type ScopeMode = 'all' | 'zone' | 'plans'
+interface ScopeCfg { mode: ScopeMode; zones: string[]; planNames: string[] }
 
 type Tab = 'overview' | 'log' | 'eval' | 'config' | 'backtest'
 
@@ -102,6 +108,8 @@ function runBacktest(
   startDate: string, endDate: string, gross: number, weeklyTarget: number,
   selectedRules: Set<string>, planNames: string[] = defaultPlans.map(p => p.name),
   plansData: { spend: number }[] = [],
+  weights: Record<string, number> = RULE_WEIGHT,
+  ruleDefsList: RuleDef[] = RULE_DEFS,
 ) {
   // 生成日期序列
   const dates: string[] = []
@@ -114,7 +122,7 @@ function runBacktest(
 
   // 按所选规则聚合费比影响（pp/天）,带衰减与上下限
   let netImpactPP = 0
-  selectedRules.forEach(k => { netImpactPP += (RULE_WEIGHT[k] || 0) })
+  selectedRules.forEach(k => { netImpactPP += (weights[k] || 0) })
   const improvePP = Math.max(-3, Math.min(6, netImpactPP * 0.6))  // 净改善上限6pp,可为负
   const improve = improvePP / 100
 
@@ -140,9 +148,9 @@ function runBacktest(
   const rowCount = ruleKeys.length === 0 ? 0 : Math.min(40, Math.max(ruleKeys.length, Math.round(dates.length / 3)))
   for (let n = 0; n < rowCount; n++) {
     const rKey = ruleKeys[n % ruleKeys.length]
-    const rDef = RULE_DEFS.find(r => r.key === rKey)
+    const rDef = ruleDefsList.find(r => r.key === rKey)
     if (!rDef) continue
-    const w = RULE_WEIGHT[rKey] || 0
+    const w = weights[rKey] || 0
     const date = dates[Math.floor(rng() * dates.length)]
     const plan = planNames[Math.floor(rng() * planNames.length)] || '—'
     detailRows.push({
@@ -249,6 +257,29 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
     saveJSON('ruleengine.enabled', undefined)
   }
 
+  // ── 自建规则 / 作用范围 / 全局暂停（持久化） ──────────
+  const [customRules, setCustomRulesRaw] = useState<CustomRule[]>(() => loadJSON<CustomRule[]>('ruleengine.custom', []))
+  const [ruleScope, setRuleScopeRaw] = useState<Record<string, ScopeCfg>>(() => loadJSON<Record<string, ScopeCfg>>('ruleengine.scope', {}))
+  const [globalPaused, setGlobalPausedRaw] = useState<boolean>(() => loadJSON<boolean>('ruleengine.globalPaused', false))
+  const [scopeFor, setScopeFor] = useState<string | null>(null)   // 正在编辑作用范围的规则 key
+  const [showRuleBuilder, setShowRuleBuilder] = useState(false)
+
+  function setCustomRules(next: CustomRule[]) { setCustomRulesRaw(next); saveJSON('ruleengine.custom', next) }
+  function setRuleScope(next: Record<string, ScopeCfg>) { setRuleScopeRaw(next); saveJSON('ruleengine.scope', next) }
+  function setGlobalPaused(v: boolean) { setGlobalPausedRaw(v); saveJSON('ruleengine.globalPaused', v) }
+
+  // 内置 + 自定义规则合并(用于展示/启停/回测勾选)
+  const allRules: RuleDef[] = [...RULE_DEFS, ...customRules]
+  // 合并权重表(内置 RULE_WEIGHT + 自定义规则方向权重)
+  const ruleWeights: Record<string, number> = { ...RULE_WEIGHT, ...Object.fromEntries(customRules.map(r => [r.key, r.weight])) }
+
+  function scopeLabel(key: string): string {
+    const sc = ruleScope[key]
+    if (!sc || sc.mode === 'all') return '全部计划'
+    if (sc.mode === 'zone') return sc.zones.length ? sc.zones.map(z => ({ red: '红区', yellow: '黄区', green: '绿区' }[z] || z)).join('/') : '未选区间'
+    return sc.planNames.length ? `${sc.planNames.length}个指定计划` : '未选计划'
+  }
+
   // Backtest state
   const [btStart, setBtStart] = useState('2026-04-29')
   const [btEnd, setBtEnd] = useState('2026-05-28')
@@ -265,11 +296,45 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
     : ''
   function handleRunBacktest() {
     if (btError) return
-    setBtResult(runBacktest(btStart, btEnd, btGross / 100, btWeekly / 100, effectiveBtRules, plans.map(p => p.name), plans))
+    setBtResult(runBacktest(btStart, btEnd, btGross / 100, btWeekly / 100, effectiveBtRules, plans.map(p => p.name), plans, ruleWeights, allRules))
   }
 
-  const execs = useMemo(() => collectExecs(), [])
+  const allExecs = useMemo(() => collectExecs(), [])
+  // 可选时间区间(历史日志为 MM/DD,同年内可按字符串排序比较)
+  const dateList = useMemo(() => [...new Set(allExecs.map(e => e.date))].sort(), [allExecs])
+  const [rangeStart, setRangeStart] = useState('')
+  const [rangeEnd, setRangeEnd] = useState('')
+  const rs = rangeStart || dateList[0] || ''
+  const re = rangeEnd || dateList[dateList.length - 1] || ''
+  const execs = useMemo(() => allExecs.filter(e => e.date >= rs && e.date <= re), [allExecs, rs, re])
   const eff = useMemo(() => computeEffects(execs), [execs])
+  const isRangeFull = rs === (dateList[0] || '') && re === (dateList[dateList.length - 1] || '')
+
+  // ── 效果评估:前后对齐对比 ──────────────────────────
+  // 全店日费比序列(模拟,确定性):随天数缓降,代表规则持续生效
+  const avgGross = plans.length ? plans.reduce((s, p) => s + p.gross, 0) / plans.length : 0.31
+  const febiSeries = useMemo(() => {
+    const n = dateList.length || 1
+    let seed = dateList.join('').split('').reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 7)
+    const rng = () => { seed = (Math.imul(1664525, seed) + 1013904223) | 0; return (seed >>> 0) / 4294967296 }
+    const startF = avgGross + 0.06, endF = avgGross + 0.005
+    return dateList.map((date, i) => {
+      const trend = startF - (startF - endF) * (i / Math.max(1, n - 1))
+      const noise = (rng() - 0.5) * 0.012
+      const febi = Math.max(0.05, trend + noise)
+      return { date, febi: +febi.toFixed(4), roi: +(1 / febi).toFixed(2) }
+    })
+  }, [dateList, avgGross])
+  const [alignDate, setAlignDate] = useState('')
+  const [alignWindow, setAlignWindow] = useState(3)
+  const alignIdx = (() => { const i = febiSeries.findIndex(d => d.date === (alignDate || dateList[Math.floor(dateList.length / 2)])); return i < 0 ? Math.floor(febiSeries.length / 2) : i })()
+  const beforeSlice = febiSeries.slice(Math.max(0, alignIdx - alignWindow), alignIdx)
+  const afterSlice = febiSeries.slice(alignIdx, Math.min(febiSeries.length, alignIdx + alignWindow))
+  const avg = (arr: { febi: number }[], k: 'febi') => arr.length ? arr.reduce((s, d) => s + d[k], 0) / arr.length : 0
+  const beforeFebi = avg(beforeSlice, 'febi'), afterFebi = avg(afterSlice, 'febi')
+  const febiDelta = beforeFebi - afterFebi  // 正 = 改善(费比下降)
+  const beforeRoi = beforeFebi > 0 ? 1 / beforeFebi : 0, afterRoi = afterFebi > 0 ? 1 / afterFebi : 0
+  const alignChartData = febiSeries.map((d, i) => ({ ...d, phase: i < alignIdx ? 'before' : 'after' }))
 
   const totalTriggers = execs.length
   const totalPending = execs.filter(e => e.pending).length
@@ -290,7 +355,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
   )
 
   // Chart data for eval
-  const chartData = RULE_DEFS.map(rd => {
+  const chartData = allRules.map(rd => {
     const e = eff[rd.key]
     const d = e?.avgRoiDelta ?? null
     const fill = d == null ? 'rgba(158,158,158,.5)'
@@ -311,6 +376,33 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
     fontSize: 11, border: '1px solid #ddd', borderRadius: 4, padding: '3px 6px', background: '#fff',
   }
 
+  // 时间区间选择条(总览/日志共用)
+  const rangeBar = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 11, color: '#6b7280', flexWrap: 'wrap' }}>
+      <span style={{ fontWeight: 700, color: '#374151' }}>📅 时间区间</span>
+      <select style={selStyle} value={rs} onChange={e => setRangeStart(e.target.value)}>
+        {dateList.map(d => <option key={d} value={d} disabled={d > re}>{d}</option>)}
+      </select>
+      <span>—</span>
+      <select style={selStyle} value={re} onChange={e => setRangeEnd(e.target.value)}>
+        {dateList.map(d => <option key={d} value={d} disabled={d < rs}>{d}</option>)}
+      </select>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {([['近7天', 7], ['近14天', 14], ['全部', 0]] as [string, number][]).map(([lbl, n]) => (
+          <button key={lbl} onClick={() => {
+            if (n === 0) { setRangeStart(dateList[0]); setRangeEnd(dateList[dateList.length - 1]) }
+            else { setRangeStart(dateList[Math.max(0, dateList.length - n)]); setRangeEnd(dateList[dateList.length - 1]) }
+          }} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer', fontWeight: 600 }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+      <span style={{ marginLeft: 'auto', color: '#9ca3af' }}>
+        {isRangeFull ? `全部 ${dateList.length} 天` : `${execs.length} 次触发`}
+      </span>
+    </div>
+  )
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#f3f4f6', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* ── Header ── */}
@@ -319,12 +411,33 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
           ← 返回看板
         </button>
         <div style={{ fontWeight: 700, fontSize: 17, flex: 1 }}>⚙️ 规则引擎管理</div>
-        <div style={{ display: 'flex', gap: 8, fontSize: 12 }}>
+        <div style={{ display: 'flex', gap: 8, fontSize: 12, alignItems: 'center' }}>
           <span style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(76,175,80,.6)' }}>{totalTriggers}次触发</span>
           {totalPending > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(198,40,40,.6)' }}>{totalPending}项待确认</span>}
           <span style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.2)' }}>自动执行率{autoRate}%</span>
+          {/* 全局暂停总开关 */}
+          <button onClick={() => setGlobalPaused(!globalPaused)}
+            title={globalPaused ? '当前已暂停所有自动执行,点击恢复' : '点击暂停所有自动执行(仅预警不操作)'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              border: '1px solid rgba(255,255,255,.4)',
+              background: globalPaused ? '#fbbf24' : 'rgba(255,255,255,.15)',
+              color: globalPaused ? '#7c2d12' : '#fff',
+            }}>
+            {globalPaused ? '⏸ 已全局暂停' : '▶ 运行中'}
+          </button>
         </div>
       </div>
+
+      {/* 全局暂停横幅 */}
+      {globalPaused && (
+        <div style={{ flexShrink: 0, background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '6px 20px', fontSize: 12, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+          ⏸ 规则引擎已全局暂停 — 所有规则仅推送预警,不自动执行任何 ROI/预算操作。
+          <button onClick={() => setGlobalPaused(false)} style={{ marginLeft: 'auto', padding: '2px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: '#92400e', color: '#fff', border: 'none', cursor: 'pointer' }}>
+            恢复运行
+          </button>
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div style={{ background: '#fff', borderBottom: '2px solid #e5e7eb', padding: '0 20px', display: 'flex', flexShrink: 0 }}>
@@ -350,6 +463,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
         {/* ══ 规则总览 ══ */}
         {tab === 'overview' && (
           <div>
+            {rangeBar}
             {/* KPI row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
               {([
@@ -357,7 +471,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                 ['待确认', totalPending, totalPending ? '#c62828' : '#2e7d32'],
                 ['自动执行率', autoRate + '%', '#2e7d32'],
                 ['涉及计划数', activePlans, '#283593'],
-                ['规则条数', RULE_DEFS.length, '#666'],
+                ['规则条数', allRules.length, '#666'],
               ] as [string, string | number, string][]).map(([l, v, c], i) => (
                 <div key={i} style={{ background: '#fff', borderRadius: 12, padding: '12px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
                   <div style={{ fontSize: 22, fontWeight: 800, color: c }}>{v}</div>
@@ -366,9 +480,18 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
               ))}
             </div>
 
+            {/* toolbar */}
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>规则清单</span>
+              <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>内置 {RULE_DEFS.length} + 自定义 {customRules.length}</span>
+              <button onClick={() => setShowRuleBuilder(true)}
+                style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6d28d9,#4338ca)', color: '#fff', cursor: 'pointer' }}>
+                ＋ 新建规则
+              </button>
+            </div>
             {/* Rule cards grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-              {RULE_DEFS.map(rd => {
+              {allRules.map(rd => {
                 const e = eff[rd.key] || { triggers: 0, pending: 0, auto: 0, avgRoiDelta: null, avgFebiDelta: null, successRate: 0, planHits: {} }
                 const ls = layerStyle(rd.layer)
                 const topPlans = Object.entries(e.planHits || {}).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n, c]) => `${n.slice(0, 4)}(${c})`).join(' ')
@@ -384,10 +507,12 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                     onMouseEnter={e2 => (e2.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.15)')}
                     onMouseLeave={e2 => (e2.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,.08)')}>
                     {/* card head */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: '1px solid #f0f0f0', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: '1px solid #f0f0f0', flexWrap: 'wrap', opacity: ruleEnabled[rd.key] === false ? 0.55 : 1 }}>
                       <span style={{ fontSize: 16 }}>{rd.icon}</span>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: ls.bg, color: ls.color }}>{rd.layerFull}</span>
                       <span style={{ fontWeight: 700, fontSize: 11, flex: 1 }}>{rd.key} · {rd.label}</span>
+                      {(rd as Partial<CustomRule>).custom && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede9fe', color: '#6d28d9' }}>自定义</span>}
+                      {ruleEnabled[rd.key] === false && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#f3f4f6', color: '#9ca3af' }}>已停用</span>}
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: rd.auto ? '#e8f5e9' : '#fff8e1', color: rd.auto ? '#2e7d32' : '#f57f17' }}>
                         {rd.auto ? '自动' : '确认'}
                       </span>
@@ -428,6 +553,23 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                         <span>{effCls === 'pos' ? '✅' : effCls === 'neg' ? '⚠️' : 'ℹ️'}</span>
                         <span>{roiEffTxt}</span>
                       </div>
+                      {/* scope + actions footer */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px dashed #f0f0f0', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10, color: '#9ca3af' }}>作用范围</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: (ruleScope[rd.key]?.mode && ruleScope[rd.key].mode !== 'all') ? '#6d28d9' : '#6b7280', background: (ruleScope[rd.key]?.mode && ruleScope[rd.key].mode !== 'all') ? '#ede9fe' : '#f3f4f6', padding: '1px 7px', borderRadius: 10 }}>
+                          {scopeLabel(rd.key)}
+                        </span>
+                        <button onClick={() => setScopeFor(rd.key)}
+                          style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#4338ca', cursor: 'pointer' }}>
+                          设置范围
+                        </button>
+                        {(rd as Partial<CustomRule>).custom && (
+                          <button onClick={() => { if (confirm(`删除自定义规则「${rd.key}」?`)) setCustomRules(customRules.filter(c => c.key !== rd.key)) }}
+                            style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, border: '1px solid #fecaca', background: '#fff', color: '#c62828', cursor: 'pointer' }}>
+                            删除
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
@@ -438,6 +580,8 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
 
         {/* ══ 执行日志 ══ */}
         {tab === 'log' && (
+          <div>
+          {rangeBar}
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', overflow: 'hidden' }}>
             {/* filter row */}
             <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -508,15 +652,74 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
               </table>
             </div>
           </div>
+          </div>
         )}
 
         {/* ══ 效果评估 ══ */}
         {tab === 'eval' && (
           <div>
+            {/* 前后对齐对比 */}
+            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', padding: 16, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>📐 前后对齐对比</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 4 }}>模拟估算</span>
+                <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  规则生效日
+                  <select style={selStyle} value={alignDate || dateList[Math.floor(dateList.length / 2)] || ''} onChange={e => setAlignDate(e.target.value)}>
+                    {dateList.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                  对比窗口
+                  <select style={selStyle} value={alignWindow} onChange={e => setAlignWindow(+e.target.value)}>
+                    {[3, 5, 7].map(n => <option key={n} value={n}>前后各{n}天</option>)}
+                  </select>
+                </span>
+              </div>
+
+              {/* 三段对比卡 */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 14 }}>
+                <div style={{ background: '#fef2f2', borderRadius: 10, padding: '10px 12px', border: '1px solid #fecaca' }}>
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 2 }}>生效前 {beforeSlice.length} 天均值</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#c62828' }}>{(beforeFebi * 100).toFixed(1)}%</div>
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>ROI {beforeRoi.toFixed(2)}</div>
+                </div>
+                <div style={{ background: '#e8f5e9', borderRadius: 10, padding: '10px 12px', border: '1px solid #a5d6a7' }}>
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 2 }}>生效后 {afterSlice.length} 天均值</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#2e7d32' }}>{(afterFebi * 100).toFixed(1)}%</div>
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>ROI {afterRoi.toFixed(2)}</div>
+                </div>
+                <div style={{ background: febiDelta >= 0 ? '#dcfce7' : '#fef2f2', borderRadius: 10, padding: '10px 12px', border: `1px solid ${febiDelta >= 0 ? '#86efac' : '#fecaca'}` }}>
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 2 }}>费比变化</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: febiDelta >= 0 ? '#2e7d32' : '#c62828' }}>
+                    {febiDelta >= 0 ? '↓' : '↑'}{Math.abs(febiDelta * 100).toFixed(1)}pp
+                  </div>
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>ROI {afterRoi - beforeRoi >= 0 ? '+' : ''}{(afterRoi - beforeRoi).toFixed(2)}</div>
+                </div>
+              </div>
+
+              {/* 全店费比曲线 + 生效日分隔线 */}
+              <div style={{ height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={alignChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 9 }} interval={Math.max(0, Math.floor(alignChartData.length / 10))} />
+                    <YAxis tick={{ fontSize: 9 }} tickFormatter={v => (v * 100).toFixed(0) + '%'} />
+                    <Tooltip formatter={(v) => typeof v === 'number' ? (v * 100).toFixed(2) + '%' : v} />
+                    <ReferenceLine x={alignDate || dateList[Math.floor(dateList.length / 2)]} stroke="#6d28d9" strokeWidth={1.5} strokeDasharray="4 2" label={{ value: '生效日', fontSize: 9, fill: '#6d28d9', position: 'top' }} />
+                    <Line type="monotone" dataKey="febi" stroke="#283593" strokeWidth={2} dot={false} name="全店费比" />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8, lineHeight: 1.5 }}>
+                以「规则生效日」为界,对比前后各 N 天的全店费比均值。当前曲线为模拟序列;接入真实日数据后即为实际全店费比走势。
+              </div>
+            </div>
+
+            {/* 各规则估算效果 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>各规则估算效果</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 4 }}>模拟估算</span>
               <span style={{ fontSize: 11, color: '#9ca3af' }}>
-                当前为模型估算值（演示用）。接入真实执行数据后，将改为对比触发日前 3 日均值 vs 执行后 3 日均值。
+                按规则维度汇总(当前为模型估算)。接入真实执行数据后改为各规则触发前后实测对比。
               </span>
             </div>
             {/* chart */}
@@ -539,7 +742,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
             </div>
             {/* eval cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-              {RULE_DEFS.map(rd => {
+              {allRules.map(rd => {
                 const e = eff[rd.key] || { triggers: 0, pending: 0, successRate: 0, avgRoiDelta: null, avgFebiDelta: null, avgSpendDelta: null }
                 const fmt = (v: number | null, unit: string) => v == null ? '—' : `${v > 0 ? '+' : ''}${v}${unit}`
                 const roiCls = e.avgRoiDelta == null ? 'neu' : scaleUp.has(rd.key) ? (e.avgRoiDelta >= -0.05 ? 'pos' : 'neg') : (e.avgRoiDelta < 0 ? 'pos' : e.avgRoiDelta > 0.2 ? 'neg' : 'neu')
@@ -590,7 +793,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                 <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 400 }}>点击开关可单独启停规则</span>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 14 }}>
-                {RULE_DEFS.map(rd => {
+                {allRules.map(rd => {
                   const enabled = ruleEnabled[rd.key] !== false
                   const ls = layerStyle(rd.layer)
                   return (
@@ -735,9 +938,9 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                   {[
                     { label: '🟢 宽松模式', keys: ['R3', 'DT3', 'WK2', 'WK4'] },
                     { label: '🔴 强收紧', keys: ['R1-A', 'R1-B', 'R2-A', 'R2-B', 'R2-C', 'DT1', 'DT4', 'WK1', 'WK3'] },
-                    { label: '📅 仅日层', keys: RULE_DEFS.filter(r => r.layer === 'D').map(r => r.key) },
-                    { label: '📆 仅周层', keys: RULE_DEFS.filter(r => r.layer === 'W').map(r => r.key) },
-                    { label: '全选', keys: RULE_DEFS.map(r => r.key) },
+                    { label: '📅 仅日层', keys: allRules.filter(r => r.layer === 'D').map(r => r.key) },
+                    { label: '📆 仅周层', keys: allRules.filter(r => r.layer === 'W').map(r => r.key) },
+                    { label: '全选', keys: allRules.map(r => r.key) },
                     { label: '清空', keys: [] },
                   ].map(preset => (
                     <button key={preset.label} onClick={() => setBtRules(new Set(preset.keys))}
@@ -750,7 +953,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
 
               {/* H layer */}
               <div style={{ fontSize: 10, fontWeight: 700, color: '#e65100', background: '#fff3e0', padding: '3px 6px', borderRadius: 4, marginBottom: 4 }}>🕐 小时层</div>
-              {RULE_DEFS.filter(r => r.layer === 'H').map(r => (
+              {allRules.filter(r => r.layer === 'H').map(r => (
                 <label key={r.key} title={ruleEnabled[r.key] === false ? '该规则已在「规则参数」中停用' : undefined}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: ruleEnabled[r.key] === false ? 'not-allowed' : 'pointer', marginBottom: 4, opacity: ruleEnabled[r.key] === false ? 0.4 : 1 }}>
                   <input type="checkbox" disabled={ruleEnabled[r.key] === false} checked={ruleEnabled[r.key] !== false && btRules.has(r.key)} onChange={e => {
@@ -765,7 +968,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
 
               {/* D layer */}
               <div style={{ fontSize: 10, fontWeight: 700, color: '#283593', background: '#e8eaf6', padding: '3px 6px', borderRadius: 4, marginBottom: 4, marginTop: 8 }}>📅 日层</div>
-              {RULE_DEFS.filter(r => r.layer === 'D').map(r => (
+              {allRules.filter(r => r.layer === 'D').map(r => (
                 <label key={r.key} title={ruleEnabled[r.key] === false ? '该规则已在「规则参数」中停用' : undefined}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: ruleEnabled[r.key] === false ? 'not-allowed' : 'pointer', marginBottom: 4, opacity: ruleEnabled[r.key] === false ? 0.4 : 1 }}>
                   <input type="checkbox" disabled={ruleEnabled[r.key] === false} checked={ruleEnabled[r.key] !== false && btRules.has(r.key)} onChange={e => {
@@ -780,7 +983,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
 
               {/* W layer */}
               <div style={{ fontSize: 10, fontWeight: 700, color: '#2e7d32', background: '#e8f5e9', padding: '3px 6px', borderRadius: 4, marginBottom: 4, marginTop: 8 }}>📆 周层</div>
-              {RULE_DEFS.filter(r => r.layer === 'W').map(r => (
+              {allRules.filter(r => r.layer === 'W').map(r => (
                 <label key={r.key} title={ruleEnabled[r.key] === false ? '该规则已在「规则参数」中停用' : undefined}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: ruleEnabled[r.key] === false ? 'not-allowed' : 'pointer', marginBottom: 4, opacity: ruleEnabled[r.key] === false ? 0.4 : 1 }}>
                   <input type="checkbox" disabled={ruleEnabled[r.key] === false} checked={ruleEnabled[r.key] !== false && btRules.has(r.key)} onChange={e => {
@@ -912,6 +1115,193 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
           </div>
         )}
       </div>
+
+      {/* 作用范围编辑弹窗 */}
+      {scopeFor && (
+        <ScopeModal
+          ruleKey={scopeFor}
+          plans={plans}
+          value={ruleScope[scopeFor] || { mode: 'all', zones: [], planNames: [] }}
+          onSave={cfg => { setRuleScope({ ...ruleScope, [scopeFor]: cfg }); setScopeFor(null) }}
+          onClose={() => setScopeFor(null)}
+        />
+      )}
+
+      {/* 自建规则弹窗 */}
+      {showRuleBuilder && (
+        <RuleBuilderModal
+          existingKeys={allRules.map(r => r.key)}
+          onSave={rule => { setCustomRules([...customRules, rule]); setShowRuleBuilder(false) }}
+          onClose={() => setShowRuleBuilder(false)}
+        />
+      )}
     </div>
+  )
+}
+
+// ─── 作用范围编辑弹窗 ─────────────────────────────────
+function ScopeModal({ ruleKey, plans, value, onSave, onClose }: {
+  ruleKey: string; plans: PlanData[]; value: ScopeCfg
+  onSave: (cfg: ScopeCfg) => void; onClose: () => void
+}) {
+  const [mode, setMode] = useState<ScopeMode>(value.mode)
+  const [zones, setZones] = useState<string[]>(value.zones || [])
+  const [planNames, setPlanNames] = useState<string[]>(value.planNames || [])
+  const zoneOf = (p: PlanData) => (p.febi > p.gross ? 'red' : p.febi > p.gross - 0.1 ? 'yellow' : 'green')
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/40" onClick={onClose} />
+      <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none p-6">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-full overflow-auto pointer-events-auto">
+          <div style={{ background: 'linear-gradient(135deg,#4338ca,#6d28d9)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>🎯 作用范围 · {ruleKey}</div>
+            <button onClick={onClose} style={{ color: 'rgba(255,255,255,.8)', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ padding: 18 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+              {([['all', '全部计划'], ['zone', '按区间'], ['plans', '手选计划']] as [ScopeMode, string][]).map(([m, l]) => (
+                <button key={m} onClick={() => setMode(m)}
+                  style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${mode === m ? '#6d28d9' : '#e5e7eb'}`, background: mode === m ? '#ede9fe' : '#fff', color: mode === m ? '#6d28d9' : '#6b7280' }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {mode === 'all' && <div style={{ fontSize: 12, color: '#6b7280', padding: '8px 0' }}>该规则对当前店铺<strong>全部计划</strong>生效。</div>}
+
+            {mode === 'zone' && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                {([['red', '🔴 红区'], ['yellow', '🟡 黄区'], ['green', '🟢 绿区']] as [string, string][]).map(([z, l]) => {
+                  const on = zones.includes(z)
+                  return (
+                    <button key={z} onClick={() => setZones(on ? zones.filter(x => x !== z) : [...zones, z])}
+                      style={{ flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${on ? '#6d28d9' : '#e5e7eb'}`, background: on ? '#ede9fe' : '#fff', color: on ? '#6d28d9' : '#9ca3af' }}>
+                      {l}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {mode === 'plans' && (
+              <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                {plans.map(p => {
+                  const on = planNames.includes(p.name)
+                  return (
+                    <label key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid #f5f5f5', cursor: 'pointer', fontSize: 12 }}>
+                      <input type="checkbox" checked={on} onChange={() => setPlanNames(on ? planNames.filter(x => x !== p.name) : [...planNames, p.name])} />
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: { red: '#ffebee', yellow: '#fff8e1', green: '#e8f5e9' }[zoneOf(p)], color: { red: '#c62828', yellow: '#f57f17', green: '#2e7d32' }[zoneOf(p)] }}>{{ red: '红', yellow: '黄', green: '绿' }[zoneOf(p)]}</span>
+                      <span style={{ flex: 1 }}>{p.name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button onClick={onClose} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>取消</button>
+              <button onClick={() => onSave({ mode, zones, planNames })} style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#4338ca,#6d28d9)', color: '#fff', cursor: 'pointer' }}>保存范围</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─── 自建规则弹窗 ─────────────────────────────────────
+function RuleBuilderModal({ existingKeys, onSave, onClose }: {
+  existingKeys: string[]; onSave: (rule: CustomRule) => void; onClose: () => void
+}) {
+  const [label, setLabel] = useState('')
+  const [layer, setLayer] = useState<'H' | 'D' | 'W'>('H')
+  const [trigger, setTrigger] = useState('')
+  const [action, setAction] = useState('')
+  const [auto, setAuto] = useState(false)
+  const [direction, setDirection] = useState<'cut' | 'up' | 'neutral'>('cut')
+
+  const layerFullMap = { H: '小时层', D: '日层', W: '周层' }
+  const dirColor = { cut: '#c62828', up: '#2e7d32', neutral: '#6b7280' }
+  // 自动生成 key:C1, C2 …(避开已有)
+  const nextKey = (() => { let i = 1; while (existingKeys.includes(`C${i}`)) i++; return `C${i}` })()
+  const valid = label.trim() && trigger.trim() && action.trim()
+
+  function save() {
+    if (!valid) return
+    const weight = direction === 'cut' ? 0.8 : direction === 'up' ? -0.4 : 0
+    onSave({
+      key: nextKey, label: label.trim(), layer, layerFull: layerFullMap[layer], color: dirColor[direction],
+      auto, icon: '🧩', trigger: trigger.trim(), action: action.trim(),
+      desc: trigger.trim(), custom: true, weight,
+    })
+  }
+
+  const inputStyle: React.CSSProperties = { width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '7px 10px', fontSize: 12, outline: 'none', boxSizing: 'border-box' }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/40" onClick={onClose} />
+      <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none p-6">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-full overflow-auto pointer-events-auto">
+          <div style={{ background: 'linear-gradient(135deg,#6d28d9,#4338ca)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>🧩 新建自定义规则</div>
+              <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 11, marginTop: 2 }}>规则编号 {nextKey} · 保存后与内置规则并列,可参与回测</div>
+            </div>
+            <button onClick={onClose} style={{ color: 'rgba(255,255,255,.8)', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>规则名称 *</label>
+              <input value={label} onChange={e => setLabel(e.target.value)} placeholder="如:连续3天红区强制暂停" style={inputStyle} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>层级</label>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['H', 'D', 'W'] as const).map(l => (
+                    <button key={l} onClick={() => setLayer(l)} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${layer === l ? '#6d28d9' : '#e5e7eb'}`, background: layer === l ? '#ede9fe' : '#fff', color: layer === l ? '#6d28d9' : '#9ca3af' }}>{layerFullMap[l]}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>执行方式</label>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {([[false, '👤 人工确认'], [true, '🤖 自动']] as [boolean, string][]).map(([a, l]) => (
+                    <button key={String(a)} onClick={() => setAuto(a)} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${auto === a ? '#6d28d9' : '#e5e7eb'}`, background: auto === a ? '#ede9fe' : '#fff', color: auto === a ? '#6d28d9' : '#9ca3af' }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>触发条件 *</label>
+              <input value={trigger} onChange={e => setTrigger(e.target.value)} placeholder="如:连续3天费比 > Gross毛利率 且 当日花费 > 200元" style={inputStyle} />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>执行动作 *</label>
+              <input value={action} onChange={e => setAction(e.target.value)} placeholder="如:暂停计划 + ROI上调15% + 关闭防停投" style={inputStyle} />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>影响方向（用于回测估算）</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {([['cut', '控本 · 降费比'], ['up', '放量 · 抬费比'], ['neutral', '中性 · 仅记录']] as ['cut' | 'up' | 'neutral', string][]).map(([d, l]) => (
+                  <button key={d} onClick={() => setDirection(d)} style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${direction === d ? dirColor[d] : '#e5e7eb'}`, background: direction === d ? dirColor[d] + '18' : '#fff', color: direction === d ? dirColor[d] : '#9ca3af' }}>{l}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button onClick={onClose} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>取消</button>
+              <button onClick={save} disabled={!valid} style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: valid ? 'linear-gradient(135deg,#6d28d9,#4338ca)' : '#cbd5e1', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed' }}>创建规则</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
