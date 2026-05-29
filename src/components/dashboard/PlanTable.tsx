@@ -26,6 +26,8 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
   const [search, setSearch] = useState('')
   const [zoneFilter, setZoneFilter] = useState<ZoneFilter>('all')
   const [ruleFilter, setRuleFilter] = useState<RuleFilter>('all')
+  const [pageSize, setPageSize] = useState<number>(20)
+  const [page, setPage] = useState(1)
   const lastClickedRef = useRef<string | null>(null)
 
   // Sync planData when store changes
@@ -56,6 +58,14 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
     return sortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number)
   })
 
+  // 分页:筛选/搜索/排序变化时,如当前页超界则回到第1页
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  if (safePage !== page) setPage(safePage)
+  const pageStart = (safePage - 1) * pageSize
+  const pageEnd = Math.min(pageStart + pageSize, sorted.length)
+  const paged = sorted.slice(pageStart, pageEnd)
+
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortAsc(!sortAsc)
     else { setSortKey(k); setSortAsc(true) }
@@ -65,7 +75,7 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
     e.stopPropagation()
     if (e.shiftKey && lastClickedRef.current) {
       // Shift+click: select range
-      const sortedNames = sorted.map(p => p.name)
+      const sortedNames = paged.map(p => p.name)
       const i1 = sortedNames.indexOf(lastClickedRef.current)
       const i2 = sortedNames.indexOf(name)
       const [from, to] = i1 < i2 ? [i1, i2] : [i2, i1]
@@ -274,10 +284,11 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
           </div>
         )}
 
-        <div className="overflow-x-auto max-h-80 overflow-y-auto">
+        {/* No overflow on this wrapper so the thead can be sticky to the page viewport */}
+        <div>
           <table className="w-full border-collapse text-xs">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-gray-50 border-b-2 border-gray-200">
+            <thead style={{ position: 'sticky', top: 0, zIndex: 30, background: '#f9fafb', boxShadow: '0 1px 0 #e5e7eb' }}>
+              <tr className="bg-gray-50 border-b-2 border-gray-200" style={{ background: '#f9fafb' }}>
                 <th className="px-2 py-1.5 w-8"></th>
                 <Th k="zone">区间</Th>
                 <Th k="name">计划名称</Th>
@@ -307,7 +318,7 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
                   </td>
                 </tr>
               )}
-              {sorted.map(p => {
+              {paged.map(p => {
                 const s = zoneStyle[p.zone]
                 const stopLossRoi = +(1 / p.gross).toFixed(2)
                 const targetFebipct = (p.gross * 100 - 10).toFixed(0)
@@ -380,6 +391,54 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
             </tbody>
           </table>
         </div>
+
+        {/* 分页 footer */}
+        {sorted.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+            padding: '8px 14px', borderTop: '1px solid #f0f0f0', background: '#fafbfc', fontSize: 11, color: '#475569',
+          }}>
+            <div className="flex items-center gap-3">
+              <span>共 <span style={{ fontWeight: 800, color: '#1e293b' }}>{planData.length}</span> 个计划</span>
+              {sorted.length !== planData.length && (
+                <span>· 当前筛选 <span style={{ fontWeight: 800, color: '#1e293b' }}>{sorted.length}</span> 条</span>
+              )}
+              <span>· 显示 <span style={{ fontWeight: 800, color: '#1e293b' }}>{pageStart + 1}-{pageEnd}</span> 条</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                · 每页
+                <select value={pageSize} onChange={e => { setPageSize(parseInt(e.target.value)); setPage(1) }}
+                  style={{ padding: '2px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11, fontWeight: 700, color: '#1e293b', background: '#fff', cursor: 'pointer' }}>
+                  {[20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                条
+              </span>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button disabled={safePage === 1} onClick={() => setPage(1)}
+                  style={{ padding: '3px 8px', borderRadius: 5, fontSize: 11, fontWeight: 700, border: '1px solid #e5e7eb', background: '#fff', color: safePage === 1 ? '#cbd5e1' : '#475569', cursor: safePage === 1 ? 'default' : 'pointer' }}>
+                  « 首页
+                </button>
+                <button disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))}
+                  style={{ padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 700, border: '1px solid #e5e7eb', background: '#fff', color: safePage === 1 ? '#cbd5e1' : '#475569', cursor: safePage === 1 ? 'default' : 'pointer' }}>
+                  ‹ 上一页
+                </button>
+                <span style={{ padding: '3px 10px', fontWeight: 800, color: '#1e293b' }}>
+                  {safePage} / {totalPages}
+                </span>
+                <button disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  style={{ padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 700, border: '1px solid #e5e7eb', background: '#fff', color: safePage === totalPages ? '#cbd5e1' : '#475569', cursor: safePage === totalPages ? 'default' : 'pointer' }}>
+                  下一页 ›
+                </button>
+                <button disabled={safePage === totalPages} onClick={() => setPage(totalPages)}
+                  style={{ padding: '3px 8px', borderRadius: 5, fontSize: 11, fontWeight: 700, border: '1px solid #e5e7eb', background: '#fff', color: safePage === totalPages ? '#cbd5e1' : '#475569', cursor: safePage === totalPages ? 'default' : 'pointer' }}>
+                  末页 »
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {editingPlan && (
