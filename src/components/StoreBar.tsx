@@ -1,10 +1,15 @@
-import { store, plans } from '../lib/mockData'
+import type { PlanData } from '../lib/mockData'
+
+interface Props {
+  storeConfig: { febi: number; weeklyNetProfit: number; weeklyTarget: number; grossMargin: number; targetFebi: number; totalSpend: number; totalRevenue: number; triggeredRulesCount: number; storeMarginGap?: number }
+  storePlans: PlanData[]
+}
 
 function fmt(v: number, d = 0) {
   return v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toFixed(d)
 }
 
-function computeStoreMetrics() {
+function computeStoreMetrics(store: Props['storeConfig'], plans: Props['storePlans']) {
   const zones = { G: 0, Y: 0, R: 0 }
   plans.forEach(p => {
     if (p.zone === 'green') zones.G++
@@ -44,8 +49,8 @@ function computeStoreMetrics() {
   return { totalSpend, totalRev, storeROI, storeFebi, surplus, mode, mc, mbg, mBorder, modeRule: modeRule[mode] || '', zones, wkNetRate, wkPct, wkColor, wkSpend, wkRev, avgGross }
 }
 
-export function StoreBar() {
-  const m = computeStoreMetrics()
+export function StoreBar({ storeConfig, storePlans }: Props) {
+  const m = computeStoreMetrics(storeConfig, storePlans)
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', marginBottom: 10, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 11 }}>

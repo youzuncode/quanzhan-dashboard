@@ -632,11 +632,24 @@ export function RuleEnginePage({ onClose }: Props) {
               </div>
 
               <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, marginTop: 4 }}>📋 规则选择</div>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                <button onClick={() => setBtRules(new Set(RULE_DEFS.map(r => r.key)))}
-                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, border: '1px solid #ddd', cursor: 'pointer', background: '#f9fafb' }}>全选</button>
-                <button onClick={() => setBtRules(new Set())}
-                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, border: '1px solid #ddd', cursor: 'pointer', background: '#f9fafb' }}>取消</button>
+              {/* Presets */}
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4 }}>快捷预设：</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {[
+                    { label: '🟢 宽松模式', keys: ['R3', 'DT3', 'WK2', 'WK4'] },
+                    { label: '🔴 强收紧', keys: ['R1-A', 'R1-B', 'R2-A', 'R2-B', 'R2-C', 'DT1', 'DT4', 'WK1', 'WK3'] },
+                    { label: '📅 仅日层', keys: RULE_DEFS.filter(r => r.layer === 'D').map(r => r.key) },
+                    { label: '📆 仅周层', keys: RULE_DEFS.filter(r => r.layer === 'W').map(r => r.key) },
+                    { label: '全选', keys: RULE_DEFS.map(r => r.key) },
+                    { label: '清空', keys: [] },
+                  ].map(preset => (
+                    <button key={preset.label} onClick={() => setBtRules(new Set(preset.keys))}
+                      style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: '1px solid #e5e7eb', cursor: 'pointer', background: '#f9fafb', fontWeight: 600 }}>
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* H layer */}

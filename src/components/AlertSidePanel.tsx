@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { plans } from '../lib/mockData'
+import type { PlanData } from '../lib/mockData'
 
 // Dynamically compute alerts from plans (matching HTML _collectAlerts logic)
 type AlertLevel = 'urgent' | 'warning' | 'opportunity' | 'info'
@@ -15,7 +15,7 @@ interface ComputedAlert {
   color: string
 }
 
-function collectAlerts(): ComputedAlert[] {
+function collectAlerts(plans: PlanData[]): ComputedAlert[] {
   const alerts: ComputedAlert[] = []
   const simGross = 0.31
 
@@ -109,16 +109,22 @@ function collectAlerts(): ComputedAlert[] {
 }
 
 interface Props {
+  plans: PlanData[]
   onClose: () => void
 }
 
-export function AlertSidePanel({ onClose }: Props) {
-  const allAlerts = collectAlerts()
+interface PushRecord { time: string; summary: string; status: 'ok' | 'err' }
+
+export function AlertSidePanel({ plans, onClose }: Props) {
+  const allAlerts = collectAlerts(plans)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set())
   const [showNotifyModal, setShowNotifyModal] = useState(false)
   const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('feishu_webhook') || '')
   const [notifyStatus, setNotifyStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'err'>('idle')
+  const [pushHistory, setPushHistory] = useState<PushRecord[]>([])
+  const [showHistory, setShowHistory] = useState(false)
   const webhookRef = useRef<HTMLInputElement>(null)
 
   async function sendToFeishu() {
@@ -160,10 +166,34 @@ export function AlertSidePanel({ onClose }: Props) {
         body: JSON.stringify({ msg_type: 'text', content: { text } }),
       })
       setNotifyStatus('ok')
+      const now2 = new Date()
+      const timeStr2 = `${now2.getHours()}:${String(now2.getMinutes()).padStart(2, '0')}`
+      setPushHistory(prev => [{ time: timeStr2, summary: `${urgent.length}紧急·${warning.length}预警·${opp.length}机会`, status: 'ok' as const }, ...prev].slice(0, 20))
       setTimeout(() => setNotifyStatus('idle'), 3000)
     } catch {
       setNotifyStatus('err')
+      const now2 = new Date()
+      const timeStr2 = `${now2.getHours()}:${String(now2.getMinutes()).padStart(2, '0')}`
+      setPushHistory(prev => [{ time: timeStr2, summary: '发送失败', status: 'err' as const }, ...prev].slice(0, 20))
       setTimeout(() => setNotifyStatus('idle'), 3000)
+    }
+  }
+
+  async function testWebhook() {
+    const url = webhookRef.current?.value.trim() || webhookUrl
+    if (!url) return
+    setTestStatus('testing')
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg_type: 'text', content: { text: '【测试】全站推广决策看板 Webhook 连接测试成功 ✅' } }),
+      })
+      setTestStatus('ok')
+      setTimeout(() => setTestStatus('idle'), 3000)
+    } catch {
+      setTestStatus('err')
+      setTimeout(() => setTestStatus('idle'), 3000)
     }
   }
 
@@ -309,14 +339,35 @@ export function AlertSidePanel({ onClose }: Props) {
                   onFocus={e => (e.target.style.borderColor = '#3b82f6')}
                   onBlur={e => (e.target.style.borderColor = '#d1d5db')}
                 />
-                <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>
-                  飞书群内添加机器人 → 自定义机器人 → 复制Webhook地址
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                  <div style={{ fontSize: 10, color: '#9ca3af' }}>飞书群内添加机器人 → 自定义机器人 → 复制地址</div>
+                  <button onClick={testWebhook} disabled={testStatus === 'testing'}
+                    style={{ padding: '3px 10px', borderRadius: 6, fontSize: 10, fontWeight: 700, border: '1px solid #e5e7eb', background: testStatus === 'ok' ? '#e8f5e9' : testStatus === 'err' ? '#ffebee' : '#f9fafb', color: testStatus === 'ok' ? '#2e7d32' : testStatus === 'err' ? '#c62828' : '#6b7280', cursor: 'pointer' }}>
+                    {testStatus === 'testing' ? '测试中…' : testStatus === 'ok' ? '✅ 连通' : testStatus === 'err' ? '❌ 失败' : '测试连接'}
+                  </button>
                 </div>
-                <div style={{ marginTop: 14, padding: '10px 12px', background: '#fff8e1', borderRadius: 8, fontSize: 10, color: '#795548' }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>📋 将推送内容预览</div>
+                <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff8e1', borderRadius: 8, fontSize: 10, color: '#795548' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>📋 推送内容预览</div>
                   <div>【全站推广告警】{active.filter(a => a.level === 'urgent').length}条紧急 · {active.filter(a => a.level === 'warning').length}条预警 · {active.filter(a => a.level === 'opportunity').length}条机会</div>
                 </div>
-                <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                {pushHistory.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <button onClick={() => setShowHistory(!showHistory)} style={{ fontSize: 10, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                      📋 推送历史（{pushHistory.length}条）{showHistory ? ' ▲' : ' ▼'}
+                    </button>
+                    {showHistory && (
+                      <div style={{ marginTop: 6, maxHeight: 100, overflowY: 'auto' }}>
+                        {pushHistory.map((r, i) => (
+                          <div key={i} style={{ fontSize: 10, padding: '3px 0', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 8, color: r.status === 'ok' ? '#2e7d32' : '#c62828' }}>
+                            <span>{r.time}</span>
+                            <span>{r.status === 'ok' ? '✅' : '❌'} {r.summary}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                   <button onClick={() => setShowNotifyModal(false)} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>取消</button>
                   <button
                     onClick={async () => { await sendToFeishu(); setShowNotifyModal(false) }}

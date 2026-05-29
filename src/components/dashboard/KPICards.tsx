@@ -1,10 +1,15 @@
-import { store, plans } from '../../lib/mockData'
+import type { PlanData } from '../../lib/mockData'
+
+interface Props {
+  storeConfig: { febi: number; weeklyNetProfit: number; weeklyTarget: number; grossMargin: number; targetFebi: number; totalSpend: number; totalRevenue: number; triggeredRulesCount: number }
+  storePlans: PlanData[]
+}
 
 function num(v: number) {
   return v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toLocaleString('zh-CN')
 }
 
-export function KPICards() {
+export function KPICards({ storeConfig: store, storePlans: plans }: Props) {
   const greenCount = plans.filter(p => p.zone === 'green').length
   const yellowCount = plans.filter(p => p.zone === 'yellow').length
   const redCount = plans.filter(p => p.zone === 'red').length

@@ -1,24 +1,34 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { plans as initialPlans } from '../../lib/mockData'
 import type { PlanData } from '../../lib/mockData'
 import { PlanEditModal } from './PlanEditModal'
 import { PlanCompareModal } from './PlanCompareModal'
 
 interface Props {
+  plans: PlanData[]
   onSelectPlan?: (name: string) => void
 }
 
 type SortKey = 'zone' | 'name' | 'roiTarget' | 'febi' | 'budget' | 'spend'
 const zoneOrder = { red: 0, yellow: 1, green: 2 }
 
-export function PlanTable({ onSelectPlan }: Props) {
+export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
   const [planData, setPlanData] = useState<PlanData[]>(initialPlans)
   const [sortKey, setSortKey] = useState<SortKey>('zone')
   const [sortAsc, setSortAsc] = useState(true)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [editingPlan, setEditingPlan] = useState<PlanData | null>(null)
   const [showCompare, setShowCompare] = useState(false)
+  const [limitToast, setLimitToast] = useState(false)
+  const lastClickedRef = useRef<string | null>(null)
+
+  // Sync planData when store changes
+  const prevInitialRef = useRef(initialPlans)
+  if (prevInitialRef.current !== initialPlans) {
+    prevInitialRef.current = initialPlans
+    setPlanData(initialPlans)
+    setSelectedNames(new Set())
+  }
 
   const sorted = [...planData].sort((a, b) => {
     let va: number | string = a[sortKey] as number | string
@@ -35,12 +45,37 @@ export function PlanTable({ onSelectPlan }: Props) {
 
   function toggleSelect(name: string, e: React.MouseEvent) {
     e.stopPropagation()
-    setSelectedNames(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else if (next.size < 4) next.add(name)
-      return next
-    })
+    if (e.shiftKey && lastClickedRef.current) {
+      // Shift+click: select range
+      const sortedNames = sorted.map(p => p.name)
+      const i1 = sortedNames.indexOf(lastClickedRef.current)
+      const i2 = sortedNames.indexOf(name)
+      const [from, to] = i1 < i2 ? [i1, i2] : [i2, i1]
+      const rangeNames = sortedNames.slice(from, to + 1)
+      setSelectedNames(prev => {
+        const next = new Set(prev)
+        rangeNames.forEach(n => { if (next.size < 4) next.add(n) })
+        if (next.size >= 4 && rangeNames.some(n => !prev.has(n))) {
+          setLimitToast(true); setTimeout(() => setLimitToast(false), 2000)
+        }
+        return next
+      })
+    } else {
+      setSelectedNames(prev => {
+        const next = new Set(prev)
+        if (next.has(name)) {
+          next.delete(name)
+        } else if (next.size >= 4) {
+          setLimitToast(true)
+          setTimeout(() => setLimitToast(false), 2000)
+          return prev
+        } else {
+          next.add(name)
+        }
+        return next
+      })
+    }
+    lastClickedRef.current = name
   }
 
   function handleEdit(p: PlanData, e: React.MouseEvent) {
@@ -144,9 +179,14 @@ export function PlanTable({ onSelectPlan }: Props) {
           </div>
         </div>
 
-        {selectedNames.size === 0 && (
+        {limitToast && (
+          <div style={{ padding: '5px 14px', background: '#fff3e0', fontSize: 11, color: '#e65100', fontWeight: 600, borderBottom: '1px solid #ffe0b2', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ⚠️ 最多同时对比 4 个计划，请先取消已选计划再添加新的
+          </div>
+        )}
+        {!limitToast && selectedNames.size === 0 && (
           <div style={{ padding: '4px 12px', background: '#f9fafb', fontSize: 10, color: '#9ca3af', borderBottom: '1px solid #f0f0f0' }}>
-            勾选2~4个计划可进行横向对比；点击计划名查看详情；✏️ 可编辑参数
+            勾选 2~4 个计划可横向对比（支持 Shift+点击批量选择）；点击计划名查看详情；✏️ 可编辑参数
           </div>
         )}
 

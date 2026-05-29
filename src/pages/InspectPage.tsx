@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { plans, RULE_DEFS } from '../lib/mockData'
+import { RULE_DEFS } from '../lib/mockData'
+import type { PlanData } from '../lib/mockData'
 
 interface Checkpoint {
   time: string
@@ -99,13 +100,25 @@ const CHECKPOINTS: Checkpoint[] = [
 ]
 
 interface Props {
+  plans: PlanData[]
   onClose: () => void
 }
 
-export function InspectPage({ onClose }: Props) {
-  const [selected, setSelected] = useState(2) // default 14:00
+export function InspectPage({ plans, onClose }: Props) {
   const now = new Date()
   const curH = now.getHours()
+
+  // Auto-select the checkpoint closest to current time
+  function getDefaultSelected() {
+    const hours = CHECKPOINTS.map(c => c.h)
+    // Find last checkpoint that has already started or is current
+    for (let i = hours.length - 1; i >= 0; i--) {
+      if (curH >= hours[i]) return i
+    }
+    return 0
+  }
+
+  const [selected, setSelected] = useState(getDefaultSelected)
 
   function getDotCls(h: number) {
     if (curH > h) return 'done'
@@ -269,8 +282,8 @@ export function InspectPage({ onClose }: Props) {
             <div className="space-y-0">
               {planRows.map((row, i) => (
                 <div key={i} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
-                  <span className="font-bold text-xs min-w-[72px] truncate" title={row.name}>
-                    {row.name.slice(0, 5)}…
+                  <span className="font-bold text-xs" style={{ minWidth: 110, maxWidth: 130 }} title={row.name}>
+                    {row.name}
                   </span>
                   <span className="text-xs font-bold" style={{ color: row.zoneColor }}>{row.zoneLabel}</span>
                   <span className="text-xs text-gray-500 flex-1">{row.actionSummary}</span>

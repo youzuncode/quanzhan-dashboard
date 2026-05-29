@@ -870,3 +870,66 @@ export const mockPlans = plans.map((p, i) => ({
 }))
 export const mockAlerts: import('../types/database').Alert[] = []
 export const mockActionLog: import('../types/database').ActionLog[] = []
+
+// ═══════════════════════════════════════════════════════
+// MULTI-STORE SUPPORT
+// ═══════════════════════════════════════════════════════
+
+export interface StoreInfo {
+  id: string
+  name: string
+  tag: string
+  tagColor: string
+  storeConfig: typeof store
+  plans: PlanData[]
+}
+
+const store2Config = { febi: 0.212, weeklyNetProfit: 0.071, weeklyTarget: 0.10, grossMargin: 0.34, targetFebi: 0.24, storeMarginGap: -0.029, totalSpend: 31200, totalRevenue: 147170, triggeredRulesCount: 4 }
+const store3Config = { febi: 0.163, weeklyNetProfit: 0.118, weeklyTarget: 0.10, grossMargin: 0.29, targetFebi: 0.19, storeMarginGap: 0.018, totalSpend: 18900, totalRevenue: 115950, triggeredRulesCount: 2 }
+
+const plans2: PlanData[] = [
+  { name: '玉兰油多效修护霜',   zone: 'red',    roiTarget: 3.8, febi: 0.36, gross: 0.32, budget: 800,  spend: 9200,  conf: 'M', guard: false, rule: 'R2-B待确认', action: 'ROI:3.8→3.13 | 剩余×0.60\n待人工确认→' },
+  { name: '雅诗兰黛小棕瓶精华', zone: 'yellow', roiTarget: 4.2, febi: 0.27, gross: 0.35, budget: 3500, spend: 8400,  conf: 'H', guard: false, rule: 'DT1已预执行', action: 'ROI已调4.0→4.2\n明日预算¥3500→¥3150' },
+  { name: '兰蔻小黑瓶精华液',   zone: 'yellow', roiTarget: 4.5, febi: 0.25, gross: 0.33, budget: 2800, spend: 6300,  conf: 'H', guard: false, rule: '—',           action: 'ROI维持4.5 | 预算维持' },
+  { name: 'SK-II神仙水',        zone: 'green',  roiTarget: 5.5, febi: 0.19, gross: 0.38, budget: 4000, spend: 10800, conf: 'H', guard: true,  rule: 'R3触发中',    action: 'ROI维持5.5\n预算+15%→¥4,600' },
+  { name: '科颜氏高保湿面霜',   zone: 'green',  roiTarget: 5.0, febi: 0.21, gross: 0.36, budget: 2500, spend: 5800,  conf: 'H', guard: true,  rule: '—',           action: 'ROI维持5.0 | 预算维持' },
+  { name: '珀莱雅双抗精华',     zone: 'green',  roiTarget: 6.0, febi: 0.17, gross: 0.40, budget: 2000, spend: 4100,  conf: 'M', guard: true,  rule: 'R3触发中',    action: 'ROI维持6.0\n预算+18%→¥2,360' },
+  { name: '修丽可色修精华',     zone: 'red',    roiTarget: 3.5, febi: 0.41, gross: 0.30, budget: 0,    spend: 5100,  conf: 'L', guard: false, rule: 'R1-A,R2-B',   action: '暂停（预算→¥0）\nROI:3.5→3.33（止损×1.1）' },
+  { name: '悦木之源菌菇水',     zone: 'green',  roiTarget: 5.8, febi: 0.18, gross: 0.37, budget: 1800, spend: 3600,  conf: 'H', guard: true,  rule: '—',           action: 'ROI维持5.8 | 预算维持' },
+]
+
+const plans3: PlanData[] = [
+  { name: '舒肤佳沐浴露家庭装', zone: 'green',  roiTarget: 7.2, febi: 0.14, gross: 0.30, budget: 1500, spend: 3800,  conf: 'H', guard: true,  rule: 'R3触发中',  action: 'ROI维持7.2\n预算+20%→¥1,800' },
+  { name: '蓝月亮洗衣液',       zone: 'yellow', roiTarget: 5.5, febi: 0.21, gross: 0.25, budget: 2000, spend: 5200,  conf: 'M', guard: false, rule: '—',         action: 'ROI维持5.5 | 预算维持' },
+  { name: '立白洗洁精大桶装',   zone: 'green',  roiTarget: 8.0, febi: 0.13, gross: 0.28, budget: 800,  spend: 1900,  conf: 'H', guard: true,  rule: '—',         action: 'ROI维持8.0 | 预算维持' },
+  { name: '云南白药牙膏',       zone: 'red',    roiTarget: 4.5, febi: 0.32, gross: 0.28, budget: 600,  spend: 4200,  conf: 'L', guard: false, rule: 'R2-B待确认', action: 'ROI:4.5→3.57 | 剩余×0.60\n待人工确认→' },
+  { name: '滴露消毒洗手液',     zone: 'green',  roiTarget: 6.8, febi: 0.15, gross: 0.31, budget: 1200, spend: 2800,  conf: 'H', guard: true,  rule: '—',         action: 'ROI维持6.8 | 预算维持' },
+  { name: '花王洁霸洗衣凝珠',   zone: 'yellow', roiTarget: 5.2, febi: 0.22, gross: 0.26, budget: 1600, spend: 3500,  conf: 'M', guard: false, rule: 'DT1触发',   action: 'ROI+8%→5.62\n明日预算×0.90' },
+]
+
+export const STORES: StoreInfo[] = [
+  {
+    id: 'store1',
+    name: '陆老师护发旗舰店',
+    tag: '主店',
+    tagColor: '#1565c0',
+    storeConfig: store,
+    plans,
+  },
+  {
+    id: 'store2',
+    name: '璃颜护肤专营店',
+    tag: '副店',
+    tagColor: '#6a1b9a',
+    storeConfig: store2Config,
+    plans: plans2,
+  },
+  {
+    id: 'store3',
+    name: '净居洗护日用店',
+    tag: '新店',
+    tagColor: '#2e7d32',
+    storeConfig: store3Config,
+    plans: plans3,
+  },
+]

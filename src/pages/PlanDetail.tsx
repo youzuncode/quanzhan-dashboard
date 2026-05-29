@@ -1,4 +1,13 @@
 import { useState, useCallback } from 'react'
+
+// Module-level caches so state persists when PlanDetail is closed & reopened
+const _triggerStateCache = new Map<string, Record<string, { status: string; operator: string; execTime?: string }>>()
+const _apiResultCache = new Map<string, Record<string, { status: string; message: string; params: { key: string; before: string; after: string; change: string; dir: string }[] }>>()
+const _cmpEnabledCache = new Map<string, { value: boolean }>()
+function _getCmpCache(name: string) {
+  if (!_cmpEnabledCache.has(name)) _cmpEnabledCache.set(name, { value: false })
+  return _cmpEnabledCache.get(name)!
+}
 import { ArrowLeft } from 'lucide-react'
 import { plans, PLAN_PARAMS, PLAN_TODAY_TRIGGERS, PLAN_HIST_LOG, planErr, MOCK_API_PARAMS, PLAN_DAILY_DATA, PLAN_HOURLY_DATA, enrichRow } from '../lib/mockData'
 import type { TodayTrigger, DailyRow, HourlyRow } from '../lib/mockData'
@@ -11,8 +20,24 @@ function fmtNum(v: number | null | undefined) { if (v == null) return '—'; ret
 export function PlanDetail({ planName, onClose }: Props) {
   const plan = plans.find(p => p.name === planName)
   const [activeTab, setActiveTab] = useState<Tab>('info')
-  const [triggerStates, setTriggerStates] = useState<Record<string, { status: string; operator: string; execTime?: string }>>({})
-  const [apiResults, setApiResults] = useState<Record<string, { status: string; message: string; params: { key: string; before: string; after: string; change: string; dir: string }[] }>>({})
+  const [triggerStates, setTriggerStatesRaw] = useState<Record<string, { status: string; operator: string; execTime?: string }>>(() => _triggerStateCache.get(planName) || {})
+  const [apiResults, setApiResultsRaw] = useState<Record<string, { status: string; message: string; params: { key: string; before: string; after: string; change: string; dir: string }[] }>>(() => _apiResultCache.get(planName) || {})
+
+  // Persist to module cache on every change
+  function setTriggerStates(updater: (prev: typeof triggerStates) => typeof triggerStates) {
+    setTriggerStatesRaw(prev => {
+      const next = updater(prev)
+      _triggerStateCache.set(planName, next)
+      return next
+    })
+  }
+  function setApiResults(updater: (prev: typeof apiResults) => typeof apiResults) {
+    setApiResultsRaw(prev => {
+      const next = updater(prev)
+      _apiResultCache.set(planName, next)
+      return next
+    })
+  }
 
   if (!plan) return (
     <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
@@ -450,10 +475,12 @@ interface DataPaneProps {
 }
 
 function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: DataPaneProps) {
+  const _cmpCache = _getCmpCache(plan.name)
   const [dataSub, setDataSub] = useState<'daily' | 'hourly'>('daily')
   const [agg, setAgg] = useState<'day' | 'week' | 'month'>('day')
   const [metricKey, setMetricKey] = useState<'roi' | 'febi' | 'spend' | 'rev' | 'orders' | 'ctr' | 'cvr' | 'impr' | 'clicks' | 'cpc' | 'favs' | 'addcart'>('roi')
-  const [cmpEnabled, setCmpEnabled] = useState(false)
+  const [cmpEnabled, setCmpEnabledRaw] = useState(_cmpCache.value)
+  function setCmpEnabled(v: boolean) { _cmpCache.value = v; setCmpEnabledRaw(v) }
 
   // Date range state
   const lastDate = allDailyData.length ? allDailyData[allDailyData.length - 1].date : '5/28'
