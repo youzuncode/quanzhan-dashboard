@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --green: #2e7d32;
+  --green-lt: #e8f5e9;
+  --green-bg: #c8e6c9;
+  --yellow: #f57f17;
+  --yellow-lt: #fff8e1;
+  --yellow-bg: #ffe082;
+  --red: #c62828;
+  --red-lt: #ffebee;
+  --red-bg: #ffcdd2;
+  --blue: #1565c0;
+  --blue-lt: #e3f2fd;
+  --indigo: #283593;
+  --indigo-lt: #e8eaf6;
+  --gray: #546e7a;
+  --gray-lt: #eceff1;
+  --text: #212121;
+  --text2: #546e7a;
+  --border: #cfd8dc;
+  --shadow: 0 2px 8px rgba(0,0,0,.10);
+  --r: 10px;
+  --font: 'PingFang SC','Microsoft YaHei',sans-serif;
+}
+
+body {
+  font-family: var(--font);
+  background: #f0f4f8;
+  color: var(--text);
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: #b0bec5; border-radius: 3px; }
+
+.zone-green { background: var(--green-lt); border-color: var(--green); }
+.zone-yellow { background: var(--yellow-lt); border-color: var(--yellow); }
+.zone-red { background: var(--red-lt); border-color: var(--red); }
+
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-yellow { background: var(--yellow-bg); color: var(--yellow); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+.badge-indigo { background: var(--indigo-lt); color: var(--indigo); }
