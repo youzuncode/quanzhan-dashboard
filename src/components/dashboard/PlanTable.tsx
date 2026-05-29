@@ -1,41 +1,34 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import type { Plan } from '../../types/database'
-import { calcTargetRoi, calcBreakevenRoi } from '../../lib/rules'
+import { plans } from '../../lib/mockData'
+import type { PlanData } from '../../lib/mockData'
 
 interface Props {
-  plans: Plan[]
+  onSelectPlan?: (name: string) => void
 }
 
-type SortKey = 'name' | 'zone' | 'roi_target' | 'daily_budget' | 'cost_rate_today' | 'roi_completion_rate' | 'spend_today'
-
+type SortKey = 'zone' | 'name' | 'roiTarget' | 'febi' | 'budget' | 'spend'
 const zoneOrder = { red: 0, yellow: 1, green: 2 }
 
-export function PlanTable({ plans }: Props) {
-  const navigate = useNavigate()
+export function PlanTable({ onSelectPlan }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('zone')
   const [sortAsc, setSortAsc] = useState(true)
 
   const sorted = [...plans].sort((a, b) => {
     let va: number | string = a[sortKey] as number | string
     let vb: number | string = b[sortKey] as number | string
-    if (sortKey === 'zone') {
-      va = zoneOrder[a.zone]
-      vb = zoneOrder[b.zone]
-    }
+    if (sortKey === 'zone') { va = zoneOrder[a.zone]; vb = zoneOrder[b.zone] }
     if (typeof va === 'string') return sortAsc ? va.localeCompare(vb as string) : (vb as string).localeCompare(va)
     return sortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number)
   })
 
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortAsc(!sortAsc)
-    else { setSortKey(key); setSortAsc(true) }
+  function toggleSort(k: SortKey) {
+    if (sortKey === k) setSortAsc(!sortAsc)
+    else { setSortKey(k); setSortAsc(true) }
   }
 
   function Th({ k, children }: { k: SortKey; children: React.ReactNode }) {
     return (
-      <th
-        className="px-2 py-1.5 text-left text-xs font-bold text-gray-500 cursor-pointer hover:text-indigo-800 select-none whitespace-nowrap"
+      <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500 cursor-pointer hover:text-indigo-800 select-none whitespace-nowrap"
         onClick={() => toggleSort(k)}>
         {children} {sortKey === k ? (sortAsc ? '↑' : '↓') : ''}
       </th>
@@ -43,87 +36,97 @@ export function PlanTable({ plans }: Props) {
   }
 
   const zoneStyle = {
-    green: { row: 'bg-green-50', dot: 'bg-green-700', badge: 'text-green-700 bg-green-100' },
-    yellow: { row: 'bg-yellow-50', dot: 'bg-yellow-600', badge: 'text-yellow-700 bg-yellow-100' },
-    red: { row: 'bg-red-50', dot: 'bg-red-700', badge: 'text-red-700 bg-red-100' },
+    green: { row: 'bg-green-50', badge: 'text-green-700 bg-green-100', dot: 'bg-green-700' },
+    yellow: { row: 'bg-yellow-50', badge: 'text-yellow-700 bg-yellow-100', dot: 'bg-yellow-600' },
+    red: { row: 'bg-red-50', badge: 'text-red-700 bg-red-100', dot: 'bg-red-700' },
   }
-
+  const zoneLabel = { green: '绿区', yellow: '黄区', red: '红区' }
   const confBadge = { H: 'bg-green-100 text-green-800', M: 'bg-yellow-100 text-yellow-800', L: 'bg-red-100 text-red-800' }
 
+  function getRuleBadge(rule: string, zone: PlanData['zone']) {
+    if (rule === '—') return null
+    const isPending = rule.includes('待确认')
+    const isActive = rule.includes('触发中')
+    const isExecuted = rule.includes('已预执行') || rule.includes('已执行')
+    const cls = isPending ? 'bg-orange-100 text-orange-800 border border-orange-300' :
+                isActive  ? 'bg-green-100 text-green-800 border border-green-300' :
+                isExecuted? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                zone === 'red' ? 'bg-red-100 text-red-800' : zone === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-700'
+    return <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${cls}`}>{rule}</span>
+  }
+
   return (
-    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-2.5">
       <div className="px-3 py-2 font-bold text-xs border-b border-gray-100 flex items-center justify-between">
-        <span>📋 计划管理表</span>
-        <span className="text-gray-400 font-normal">点击计划名查看详情</span>
+        <span>📋 计划管理总表</span>
+        <span className="text-gray-400 font-normal">{plans.length}个计划 · 点击计划名查看详情</span>
       </div>
-      <div className="overflow-x-auto max-h-72 overflow-y-auto">
+      <div className="overflow-x-auto max-h-80 overflow-y-auto">
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 z-10">
             <tr className="bg-gray-50 border-b-2 border-gray-200">
               <Th k="zone">区间</Th>
               <Th k="name">计划名称</Th>
-              <Th k="roi_target">ROI目标</Th>
-              <Th k="daily_budget">每日预算</Th>
-              <Th k="spend_today">今日花费</Th>
-              <Th k="cost_rate_today">当前费比</Th>
-              <Th k="roi_completion_rate">ROI完成率</Th>
+              <Th k="roiTarget">ROI目标</Th>
+              <Th k="febi">今日费比</Th>
+              <Th k="budget">每日预算</Th>
+              <Th k="spend">今日花费</Th>
+              <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500">Gross</th>
               <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500">置信度</th>
-              <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500">出价方式</th>
               <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500">防停投</th>
+              <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500">规则触发</th>
+              <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500 min-w-40">今日操作指令</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map(p => {
               const s = zoneStyle[p.zone]
-              const targetRoi = calcTargetRoi(p.gross_margin_rate)
-              const breakevenRoi = calcBreakevenRoi(p.gross_margin_rate)
-              const costRateTarget = +(p.gross_margin_rate - 0.10) * 100
+              const stopLossRoi = +(1 / p.gross).toFixed(2)
+              const targetFebipct = (p.gross * 100 - 10).toFixed(0)
+              const febiColor = p.febi * 100 > p.gross * 100 ? 'text-red-700 font-bold' :
+                                p.febi * 100 > parseFloat(targetFebipct) ? 'text-yellow-600 font-bold' : 'text-green-700 font-bold'
               return (
-                <tr key={p.id} className={`border-b border-gray-100 hover:brightness-95 cursor-pointer ${s.row}`}
-                  onClick={() => navigate(`/plan/${p.id}`)}>
+                <tr key={p.name} className={`border-b border-gray-100 hover:brightness-95 cursor-pointer ${s.row}`}
+                  onClick={() => onSelectPlan?.(p.name)}>
                   <td className="px-2 py-1.5">
-                    <div className="flex items-center gap-1">
-                      <span className={`inline-block w-2 h-2 rounded-full ${s.dot}`} />
-                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${s.badge}`}>
-                        {p.zone === 'green' ? '绿区' : p.zone === 'yellow' ? '黄区' : '红区'}
-                      </span>
-                    </div>
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${s.badge}`}>
+                      {zoneLabel[p.zone]}
+                    </span>
                   </td>
-                  <td className="px-2 py-1.5 font-semibold text-indigo-800 hover:underline">{p.name}</td>
+                  <td className="px-2 py-1.5 font-semibold text-indigo-800 hover:underline whitespace-nowrap">{p.name}</td>
                   <td className="px-2 py-1.5">
-                    <div className="font-bold">{p.roi_target}</div>
-                    <div className="text-gray-400">止损{breakevenRoi.toFixed(1)} / 目标{targetRoi.toFixed(1)}</div>
-                  </td>
-                  <td className="px-2 py-1.5 font-semibold">¥{p.daily_budget}</td>
-                  <td className="px-2 py-1.5">
-                    <div>¥{p.spend_today}</div>
-                    <div className="text-gray-400">{(p.spend_today / p.daily_budget * 100).toFixed(0)}%利用</div>
+                    <div className="font-bold">{p.roiTarget}</div>
+                    <div className="text-gray-400">止损{stopLossRoi}</div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <div className={`font-bold ${p.cost_rate_today * 100 > p.gross_margin_rate * 100 ? 'text-red-700' : p.cost_rate_today * 100 > costRateTarget ? 'text-yellow-600' : 'text-green-700'}`}>
-                      {(p.cost_rate_today * 100).toFixed(1)}%
-                    </div>
-                    <div className="text-gray-400">目标≤{costRateTarget.toFixed(1)}%</div>
+                    <div className={febiColor}>{(p.febi * 100).toFixed(1)}%</div>
+                    <div className="text-gray-400">目标≤{targetFebipct}%</div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <div className={`font-bold ${p.roi_completion_rate >= 1.3 ? 'text-green-700' : p.roi_completion_rate >= 0.8 ? 'text-yellow-600' : 'text-red-700'}`}>
-                      {(p.roi_completion_rate * 100).toFixed(0)}%
+                    <div className={p.budget === 0 ? 'text-red-700 font-bold' : 'font-semibold'}>
+                      {p.budget === 0 ? '¥0 暂停' : `¥${p.budget.toLocaleString()}`}
                     </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${confBadge[p.confidence]}`}>
-                      {p.confidence === 'H' ? '高' : p.confidence === 'M' ? '中' : '低'}
-                    </span>
+                    <div>¥{p.spend.toLocaleString()}</div>
+                    {p.budget > 0 && <div className="text-gray-400">{Math.round(p.spend / p.budget * 100)}%利用</div>}
+                  </td>
+                  <td className="px-2 py-1.5 text-gray-600">{(p.gross * 100).toFixed(0)}%</td>
+                  <td className="px-2 py-1.5">
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${confBadge[p.conf]}`}>{p.conf}</span>
                   </td>
                   <td className="px-2 py-1.5">
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${p.bid_mode === 'roi' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
-                      {p.bid_mode === 'roi' ? '控投产比' : '最大化拿量'}
+                    <span className={`text-xs font-bold ${p.guard ? 'text-green-700' : 'text-gray-400'}`}>
+                      {p.guard ? '✅ 开' : '—'}
                     </span>
                   </td>
+                  <td className="px-2 py-1.5">{getRuleBadge(p.rule, p.zone)}</td>
                   <td className="px-2 py-1.5">
-                    <span className={`text-xs font-bold ${p.anti_stop_enabled ? 'text-green-700' : 'text-gray-400'}`}>
-                      {p.anti_stop_enabled ? '✅ 开' : '—'}
-                    </span>
+                    {p.action.split('\n').map((line, i) => (
+                      <div key={i} className={`text-xs ${i === 0 ? 'text-indigo-800 font-semibold' : line.includes('待') ? 'text-orange-700' : 'text-gray-500'}`}>
+                        {line}
+                      </div>
+                    ))}
                   </td>
                 </tr>
               )
