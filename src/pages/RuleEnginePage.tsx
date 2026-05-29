@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { RULE_DEFS } from '../lib/mockData'
+import { useState, useMemo } from 'react'
+import { RULE_DEFS, PLAN_HIST_LOG, plans } from '../lib/mockData'
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Line, ComposedChart, Bar } from 'recharts'
 
 interface Props {
@@ -8,44 +8,123 @@ interface Props {
 
 type Tab = 'overview' | 'log' | 'eval' | 'config' | 'backtest'
 
-const layerBg: Record<string, { bg: string; color: string }> = {
+const layerStyle = (layer: string) => ({
   H: { bg: '#fff3e0', color: '#e65100' },
   D: { bg: '#e8eaf6', color: '#283593' },
   W: { bg: '#e8f5e9', color: '#2e7d32' },
+}[layer] ?? { bg: '#f5f5f5', color: '#666' })
+
+// ── Collect all executions from PLAN_HIST_LOG ─────────
+function collectExecs() {
+  const execs: {
+    date: string; plan: string; rule: string; rDef: typeof RULE_DEFS[0];
+    layer: string; action: string; pending: boolean; idx: number;
+    planLog: typeof PLAN_HIST_LOG[string];
+  }[] = []
+
+  Object.entries(PLAN_HIST_LOG).forEach(([planName, log]) => {
+    log.forEach((row, idx) => {
+      if (!row.rule || row.rule === '—') return
+      // strip suffixes like 预警/待确认/预执行/预判
+      const rk = row.rule.replace(/[预警执行待确认判检\s]/g, '').trim()
+      const rDef = RULE_DEFS.find(rd => rk.includes(rd.key) || row.rule.includes(rd.key))
+      if (!rDef) return
+      const pending = row.result === 'warn' || row.operator?.includes('待')
+      execs.push({
+        date: row.date, plan: planName, rule: row.rule,
+        rDef, layer: rDef.layer, action: row.action,
+        pending, idx, planLog: log,
+      })
+    })
+  })
+  return execs
 }
 
-// Deterministic mock effectiveness data
-function buildEffData() {
-  return RULE_DEFS.map(rd => {
+// ── Compute per-rule effectiveness ─────────────────────
+function computeEffects(execs: ReturnType<typeof collectExecs>) {
+  const eff: Record<string, {
+    triggers: number; pending: number; auto: number
+    roiDeltas: number[]; febiDeltas: number[]; spendDeltas: number[]
+    planHits: Record<string, number>
+    avgRoiDelta: number | null; avgFebiDelta: number | null; avgSpendDelta: number | null
+    successRate: number
+  }> = {}
+
+  RULE_DEFS.forEach(rd => {
+    eff[rd.key] = { triggers: 0, pending: 0, auto: 0, roiDeltas: [], febiDeltas: [], spendDeltas: [], planHits: {}, avgRoiDelta: null, avgFebiDelta: null, avgSpendDelta: null, successRate: 0 }
+  })
+
+  execs.forEach(ex => {
+    const k = ex.rDef.key
+    const e = eff[k]; if (!e) return
+    e.triggers++
+    e.planHits[ex.plan] = (e.planHits[ex.plan] || 0) + 1
+    if (ex.pending) { e.pending++; return }
+    if (ex.rDef.auto) e.auto++
+  })
+
+  // Use deterministic seed-based deltas per rule for realistic display
+  const scaleUp = new Set(['R3', 'DT3', 'WK2'])
+  RULE_DEFS.forEach(rd => {
+    const e = eff[rd.key]
     let h = 0
     for (let i = 0; i < rd.key.length; i++) h = (Math.imul(31, h) + rd.key.charCodeAt(i)) | 0
     const rng = (mn: number, mx: number) => { h = (Math.imul(1664525, h) + 1013904223) | 0; return mn + ((h >>> 0) / 4294967296) * (mx - mn) }
-    const scaleUp = new Set(['R3', 'DT3', 'WK2'])
-    const triggers = Math.round(rng(2, 20))
-    const pending = Math.round(rng(0, 2))
-    const auto = rd.auto ? Math.round(triggers * rng(0.6, 0.95)) : 0
-    const avgRoiDelta = scaleUp.has(rd.key) ? +rng(0, 0.8).toFixed(2) : +rng(-0.6, 0.1).toFixed(2)
-    const avgFebiDelta = scaleUp.has(rd.key) ? +rng(-2, 0).toFixed(1) : +rng(-4, 1).toFixed(1)
-    const avgSpendDelta = scaleUp.has(rd.key) ? +rng(5, 30).toFixed(1) : +rng(-25, -5).toFixed(1)
-    const successRate = triggers > 0 ? Math.round(((triggers - pending) / triggers) * 100) : 0
-    return { ...rd, triggers, pending, auto, avgRoiDelta, avgFebiDelta, avgSpendDelta, successRate }
+    if (e.triggers > 0) {
+      e.avgRoiDelta = scaleUp.has(rd.key) ? +rng(0, 0.8).toFixed(2) : +rng(-0.6, 0.05).toFixed(2)
+      e.avgFebiDelta = scaleUp.has(rd.key) ? +rng(-2, 0).toFixed(1) : +rng(-4, 0.5).toFixed(1)
+      e.avgSpendDelta = scaleUp.has(rd.key) ? +rng(5, 30).toFixed(1) : +rng(-25, -3).toFixed(1)
+    }
+    e.successRate = e.triggers > 0 ? Math.round(((e.triggers - e.pending) / e.triggers) * 100) : 0
   })
+
+  return eff
 }
 
-const effData = buildEffData()
+// ─── Backtest simulation ────────────────────────────────
+function runBacktest(startDate: string, endDate: string, _gross: number, _weeklyTarget: number, selectedRules: Set<string>) {
+  // Generate 30 dates
+  const dates: string[] = []
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(`${d.getMonth() + 1}/${d.getDate()}`)
+  }
 
-// Sample log rows from eff data
-const logRows = effData.flatMap(e =>
-  Array.from({ length: Math.min(e.triggers, 3) }, (_, i) => ({
-    date: `05/${28 - i}`,
-    plan: ['施华蔻养发精华液', 'UNO男士控油乳液', '海飞丝去屑洗发水', '清扬男士洗发水', '力士香薰沐浴露'][i % 5],
-    rule: e.key, layer: e.layer, layerFull: e.layerFull,
-    trigger: e.trigger, action: e.action,
-    ok: i < e.triggers - e.pending,
-    roiDelta: e.avgRoiDelta,
-    color: e.color,
-  }))
-).slice(0, 60)
+  // For each date simulate febi with/without rules
+  const trendData = dates.map((date, i) => {
+    const base = 0.22 + Math.sin(i * 0.4) * 0.03
+    const withRule = base - (selectedRules.size > 0 ? 0.015 + Math.sin(i * 0.3) * 0.005 : 0)
+    return { date, withRule: +withRule.toFixed(3), noRule: +base.toFixed(3) }
+  })
+
+  // Build detail rows
+  const planNames = plans.map(p => p.name)
+  const ruleKeys = [...selectedRules]
+  const detailRows: { date: string; plan: string; rule: string; rDef: typeof RULE_DEFS[0]; action: string; estRoiDelta: number; estFebiDelta: number; auto: boolean }[] = []
+  dates.slice(0, 10).forEach(date => {
+    const plan = planNames[Math.floor(Math.random() * planNames.length)]
+    if (ruleKeys.length === 0) return
+    const rKey = ruleKeys[Math.floor(Math.random() * ruleKeys.length)]
+    const rDef = RULE_DEFS.find(r => r.key === rKey)
+    if (!rDef) return
+    const scUp = new Set(['R3', 'DT3', 'WK2'])
+    detailRows.push({
+      date, plan, rule: rKey, rDef, action: rDef.action,
+      estRoiDelta: scUp.has(rKey) ? +(Math.random() * 0.5).toFixed(2) : +(-(Math.random() * 0.3)).toFixed(2),
+      estFebiDelta: scUp.has(rKey) ? +(-(Math.random() * 2)).toFixed(1) : +(-(Math.random() * 3)).toFixed(1),
+      auto: rDef.auto,
+    })
+  })
+
+  const autoCount = detailRows.filter(r => r.auto).length
+  const totalTriggers = detailRows.length
+  const avgFebiImprove = trendData.reduce((s, d) => s + (d.noRule - d.withRule), 0) / trendData.length
+  const avgRoiImprove = avgFebiImprove * 0.8
+  const budgetSaved = avgFebiImprove * 50000
+
+  return { trendData, detailRows, autoCount, totalTriggers, avgFebiImprove, avgRoiImprove, budgetSaved }
+}
 
 export function RuleEnginePage({ onClose }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
@@ -54,127 +133,173 @@ export function RuleEnginePage({ onClose }: Props) {
   const [fltLayer, setFltLayer] = useState('')
   const [fltStatus, setFltStatus] = useState('')
 
-  const totalTriggers = effData.reduce((s, e) => s + e.triggers, 0)
-  const totalPending = effData.reduce((s, e) => s + e.pending, 0)
-  const autoRate = totalTriggers > 0 ? Math.round(effData.reduce((s, e) => s + e.auto, 0) / totalTriggers * 100) : 0
+  // Backtest state
+  const [btStart, setBtStart] = useState('2026-04-29')
+  const [btEnd, setBtEnd] = useState('2026-05-28')
+  const [btGross, setBtGross] = useState(31)
+  const [btWeekly, setBtWeekly] = useState(10)
+  const [btRules, setBtRules] = useState<Set<string>>(new Set(RULE_DEFS.map(r => r.key)))
+  const [btResult, setBtResult] = useState<ReturnType<typeof runBacktest> | null>(null)
 
-  const tabs: { k: Tab; l: string }[] = [
-    { k: 'overview', l: '📋 规则总览' },
-    { k: 'log', l: '📝 执行日志' },
-    { k: 'eval', l: '📊 效果评估' },
-    { k: 'config', l: '⚙️ 规则参数' },
-    { k: 'backtest', l: '🔬 历史回测' },
-  ]
+  const execs = useMemo(() => collectExecs(), [])
+  const eff = useMemo(() => computeEffects(execs), [execs])
 
-  const filteredLog = logRows.filter(r =>
-    (!fltPlan || r.plan === fltPlan) &&
-    (!fltRule || r.rule === fltRule) &&
-    (!fltLayer || r.layer === fltLayer) &&
-    (!fltStatus || (fltStatus === 'ok' ? r.ok : !r.ok))
-  )
+  const totalTriggers = execs.length
+  const totalPending = execs.filter(e => e.pending).length
+  const autoRate = totalTriggers > 0 ? Math.round(execs.filter(e => e.rDef.auto).length / totalTriggers * 100) : 0
+  const activePlans = new Set(execs.map(e => e.plan)).size
 
   const scaleUp = new Set(['R3', 'DT3', 'WK2'])
   const costCut = new Set(['R1-A', 'R1-B', 'R2-A', 'R2-B', 'R2-C', 'DT1', 'DT4', 'WK1', 'WK3'])
 
-  const chartData = effData.map(e => ({
-    key: e.key,
-    roiDelta: e.avgRoiDelta,
-    triggers: e.triggers,
-    fill: scaleUp.has(e.key)
-      ? e.avgRoiDelta >= -0.05 ? 'rgba(46,125,50,.7)' : 'rgba(198,40,40,.6)'
-      : e.avgRoiDelta < 0 ? 'rgba(46,125,50,.7)' : e.avgRoiDelta > 0.2 ? 'rgba(198,40,40,.6)' : 'rgba(245,127,23,.6)',
-  }))
+  // Log filtering
+  const planNames = [...new Set(execs.map(e => e.plan))]
+  const ruleKeys = [...new Set(execs.map(e => e.rDef.key))]
+  const filteredLog = execs.filter(r =>
+    (!fltPlan || r.plan === fltPlan) &&
+    (!fltRule || r.rDef.key === fltRule) &&
+    (!fltLayer || r.layer === fltLayer) &&
+    (!fltStatus || (fltStatus === 'ok' ? !r.pending : r.pending))
+  )
+
+  // Chart data for eval
+  const chartData = RULE_DEFS.map(rd => {
+    const e = eff[rd.key]
+    const d = e?.avgRoiDelta ?? null
+    const fill = d == null ? 'rgba(158,158,158,.5)'
+      : scaleUp.has(rd.key) ? (d >= -0.05 ? 'rgba(46,125,50,.7)' : 'rgba(198,40,40,.6)')
+      : d < 0 ? 'rgba(46,125,50,.7)' : d > 0.2 ? 'rgba(198,40,40,.6)' : 'rgba(245,127,23,.6)'
+    return { key: rd.key, roiDelta: d ?? 0, triggers: e?.triggers ?? 0, fill }
+  })
+
+  const tabs: { k: Tab; l: string }[] = [
+    { k: 'overview', l: '📋 规则总览' },
+    { k: 'log', l: '📜 执行日志' },
+    { k: 'eval', l: '📊 效果评估' },
+    { k: 'config', l: '🔧 规则参数' },
+    { k: 'backtest', l: '🧪 历史回测' },
+  ]
+
+  const selStyle: React.CSSProperties = {
+    fontSize: 11, border: '1px solid #ddd', borderRadius: 4, padding: '3px 6px', background: '#fff',
+  }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-100 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 h-14 text-white flex-shrink-0"
-        style={{ background: 'linear-gradient(135deg,#283593,#1565c0)' }}>
-        <button onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
-          style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#f3f4f6', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px', height: 56, flexShrink: 0, background: 'linear-gradient(135deg,#283593,#1565c0)', color: '#fff' }}>
+        <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)', color: '#fff', cursor: 'pointer' }}>
           ← 返回看板
         </button>
-        <div className="font-bold text-lg flex-1">⚙️ 规则引擎管理</div>
-        <div className="flex gap-2 text-xs">
-          <span className="px-2 py-1 rounded-full bg-green-700/80">{totalTriggers}次触发</span>
-          {totalPending > 0 && <span className="px-2 py-1 rounded-full bg-red-700/80">{totalPending}项待确认</span>}
-          <span className="px-2 py-1 rounded-full" style={{ background: 'rgba(255,255,255,.2)' }}>自动执行率{autoRate}%</span>
+        <div style={{ fontWeight: 700, fontSize: 17, flex: 1 }}>⚙️ 规则引擎管理</div>
+        <div style={{ display: 'flex', gap: 8, fontSize: 12 }}>
+          <span style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(76,175,80,.6)' }}>{totalTriggers}次触发</span>
+          {totalPending > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(198,40,40,.6)' }}>{totalPending}项待确认</span>}
+          <span style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.2)' }}>自动执行率{autoRate}%</span>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white border-b-2 border-gray-200 px-5 flex gap-0 flex-shrink-0">
+      {/* ── Tabs ── */}
+      <div style={{ background: '#fff', borderBottom: '2px solid #e5e7eb', padding: '0 20px', display: 'flex', flexShrink: 0 }}>
         {tabs.map(t => (
           <button key={t.k} onClick={() => setTab(t.k)}
-            className={`px-4 py-2.5 text-xs font-semibold border-b-2 -mb-0.5 transition-colors whitespace-nowrap
-              ${tab === t.k ? 'text-indigo-800 border-indigo-800' : 'text-gray-500 border-transparent hover:text-indigo-800'}`}>
+            style={{
+              padding: '10px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              borderBottom: tab === t.k ? '2px solid #283593' : '2px solid transparent',
+              marginBottom: -2, background: 'none', border: 'none',
+              borderBottomStyle: 'solid',
+              borderBottomWidth: 2,
+              borderBottomColor: tab === t.k ? '#283593' : 'transparent',
+              color: tab === t.k ? '#283593' : '#6b7280', whiteSpace: 'nowrap',
+            }}>
             {t.l}
           </button>
         ))}
       </div>
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* ── Body ── */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
 
-        {/* ── 规则总览 ── */}
+        {/* ══ 规则总览 ══ */}
         {tab === 'overview' && (
           <div>
             {/* KPI row */}
-            <div className="grid grid-cols-5 gap-3 mb-4">
-              {[
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+              {([
                 ['总触发次数', totalTriggers, '#283593'],
                 ['待确认', totalPending, totalPending ? '#c62828' : '#2e7d32'],
                 ['自动执行率', autoRate + '%', '#2e7d32'],
-                ['规则条数', RULE_DEFS.length, '#283593'],
-              ].map(([l, v, c], i) => (
-                <div key={i} className="bg-white rounded-xl p-3 text-center shadow-sm">
-                  <div className="text-xl font-bold" style={{ color: c as string }}>{v}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{l}</div>
+                ['涉及计划数', activePlans, '#283593'],
+                ['规则条数', RULE_DEFS.length, '#666'],
+              ] as [string, string | number, string][]).map(([l, v, c], i) => (
+                <div key={i} style={{ background: '#fff', borderRadius: 12, padding: '12px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: c }}>{v}</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{l}</div>
                 </div>
               ))}
             </div>
 
-            {/* Rule cards */}
-            <div className="grid grid-cols-4 gap-3">
-              {effData.map(e => {
-                const lb = layerBg[e.layer]
-                const effCls = e.avgRoiDelta == null ? 'neu' :
-                  scaleUp.has(e.key) ? (e.avgRoiDelta >= -0.1 ? 'pos' : 'neg') :
-                  e.avgRoiDelta < 0 ? 'pos' : e.avgRoiDelta > 0.2 ? 'neg' : 'neu'
+            {/* Rule cards grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+              {RULE_DEFS.map(rd => {
+                const e = eff[rd.key] || { triggers: 0, pending: 0, auto: 0, avgRoiDelta: null, avgFebiDelta: null, successRate: 0, planHits: {} }
+                const ls = layerStyle(rd.layer)
+                const topPlans = Object.entries(e.planHits || {}).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n, c]) => `${n.slice(0, 4)}(${c})`).join(' ')
+                const effCls = e.avgRoiDelta == null ? 'neu'
+                  : scaleUp.has(rd.key) ? (e.avgRoiDelta >= -0.1 ? 'pos' : 'neg')
+                  : e.avgRoiDelta < 0 ? 'pos' : e.avgRoiDelta > 0.3 ? 'neg' : 'neu'
+                const roiEffTxt = e.avgRoiDelta == null ? '暂无效果数据'
+                  : `执行后3日均ROI ${e.avgRoiDelta > 0 ? '↑' : '↓'}${Math.abs(e.avgRoiDelta)} | 费比${e.avgFebiDelta != null ? (e.avgFebiDelta > 0 ? '↑' : '↓') + Math.abs(e.avgFebiDelta) : '—'}%`
+                const effBg = effCls === 'pos' ? '#e8f5e9' : effCls === 'neg' ? '#ffebee' : '#f5f5f5'
+                const effColor = effCls === 'pos' ? '#2e7d32' : effCls === 'neg' ? '#c62828' : '#666'
                 return (
-                  <div key={e.key} className="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 flex-wrap">
-                      <span className="text-base">{e.icon}</span>
-                      <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: lb.bg, color: lb.color }}>{e.layerFull}</span>
-                      <span className="font-bold text-xs">{e.key} · {e.label}</span>
-                      <span className={`ml-auto text-xs font-bold px-1.5 py-0.5 rounded ${e.auto ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {e.auto ? '自动' : '确认'}
+                  <div key={rd.key} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', overflow: 'hidden', transition: 'box-shadow .15s' }}
+                    onMouseEnter={e2 => (e2.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.15)')}
+                    onMouseLeave={e2 => (e2.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,.08)')}>
+                    {/* card head */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: '1px solid #f0f0f0', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 16 }}>{rd.icon}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: ls.bg, color: ls.color }}>{rd.layerFull}</span>
+                      <span style={{ fontWeight: 700, fontSize: 11, flex: 1 }}>{rd.key} · {rd.label}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: rd.auto ? '#e8f5e9' : '#fff8e1', color: rd.auto ? '#2e7d32' : '#f57f17' }}>
+                        {rd.auto ? '自动' : '确认'}
                       </span>
                     </div>
-                    <div className="px-3 py-2">
-                      <div className="text-xs text-gray-500 mb-2 line-clamp-2">{e.desc}</div>
-                      <div className="grid grid-cols-3 gap-1.5 mb-2">
-                        <div className="text-center p-1 bg-gray-50 rounded">
-                          <div className="font-bold text-sm" style={{ color: e.color }}>{e.triggers}</div>
-                          <div className="text-xs text-gray-400">触发</div>
+                    {/* card body */}
+                    <div style={{ padding: '8px 12px' }}>
+                      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8, lineHeight: 1.4 }}>{rd.desc}</div>
+                      {/* stats row */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                        <div style={{ textAlign: 'center', padding: '4px', background: '#fafafa', borderRadius: 6 }}>
+                          <div style={{ fontWeight: 800, fontSize: 14, color: rd.color }}>{e.triggers}</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af' }}>触发次数</div>
                         </div>
-                        <div className="text-center p-1 bg-gray-50 rounded">
-                          <div className="font-bold text-sm" style={{ color: e.pending ? '#c62828' : '#2e7d32' }}>{e.pending}</div>
-                          <div className="text-xs text-gray-400">待确认</div>
+                        <div style={{ textAlign: 'center', padding: '4px', background: '#fafafa', borderRadius: 6 }}>
+                          <div style={{ fontWeight: 800, fontSize: 14, color: e.pending ? '#c62828' : '#2e7d32' }}>{e.pending}</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af' }}>待确认</div>
                         </div>
-                        <div className="text-center p-1 bg-gray-50 rounded">
-                          <div className="font-bold text-sm text-indigo-800">{e.successRate}%</div>
-                          <div className="text-xs text-gray-400">执行率</div>
+                        <div style={{ textAlign: 'center', padding: '4px', background: '#fafafa', borderRadius: 6 }}>
+                          <div style={{ fontWeight: 800, fontSize: 14, color: '#283593' }}>{e.successRate}%</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af' }}>执行率</div>
+                        </div>
+                        <div style={{ textAlign: 'center', padding: '4px', background: '#fafafa', borderRadius: 6 }}>
+                          <div style={{ fontWeight: 700, fontSize: 10, color: '#9ca3af' }}>{topPlans || '—'}</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af' }}>高频计划</div>
                         </div>
                       </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
-                        <div className="h-full rounded-full" style={{ width: `${e.successRate}%`, background: e.color }} />
+                      {/* progress bar */}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>
+                          <span>执行率</span><span>{e.successRate}%</span>
+                        </div>
+                        <div style={{ height: 5, background: '#f0f0f0', borderRadius: 4, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.max(4, e.successRate)}%`, background: rd.color, borderRadius: 4 }} />
+                        </div>
                       </div>
-                      <div className={`text-xs px-2 py-1 rounded flex items-center gap-1
-                        ${effCls === 'pos' ? 'bg-green-50 text-green-800' : effCls === 'neg' ? 'bg-red-50 text-red-800' : 'bg-gray-50 text-gray-600'}`}>
+                      {/* effect label */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '4px 8px', borderRadius: 6, background: effBg, color: effColor }}>
                         <span>{effCls === 'pos' ? '✅' : effCls === 'neg' ? '⚠️' : 'ℹ️'}</span>
-                        <span>执行后ROI {e.avgRoiDelta > 0 ? '↑' : '↓'}{Math.abs(e.avgRoiDelta)} | 费比{e.avgFebiDelta > 0 ? '↑' : '↓'}{Math.abs(e.avgFebiDelta)}%</span>
+                        <span>{roiEffTxt}</span>
                       </div>
                     </div>
                   </div>
@@ -184,70 +309,67 @@ export function RuleEnginePage({ onClose }: Props) {
           </div>
         )}
 
-        {/* ── 执行日志 ── */}
+        {/* ══ 执行日志 ══ */}
         {tab === 'log' && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="p-3 border-b border-gray-100 flex gap-2 flex-wrap items-center">
-              <span className="text-xs font-bold text-gray-500">筛选：</span>
-              <select className="text-xs border border-gray-300 rounded px-2 py-1" value={fltPlan} onChange={e => setFltPlan(e.target.value)}>
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', overflow: 'hidden' }}>
+            {/* filter row */}
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af' }}>筛选：</span>
+              <select style={selStyle} value={fltPlan} onChange={e => setFltPlan(e.target.value)}>
                 <option value="">全部计划</option>
-                {[...new Set(logRows.map(r => r.plan))].map(n => <option key={n}>{n}</option>)}
+                {planNames.map(n => <option key={n}>{n}</option>)}
               </select>
-              <select className="text-xs border border-gray-300 rounded px-2 py-1" value={fltRule} onChange={e => setFltRule(e.target.value)}>
+              <select style={selStyle} value={fltRule} onChange={e => setFltRule(e.target.value)}>
                 <option value="">全部规则</option>
-                {RULE_DEFS.map(r => <option key={r.key}>{r.key}</option>)}
+                {ruleKeys.map(k => <option key={k}>{k}</option>)}
               </select>
-              <select className="text-xs border border-gray-300 rounded px-2 py-1" value={fltLayer} onChange={e => setFltLayer(e.target.value)}>
+              <select style={selStyle} value={fltLayer} onChange={e => setFltLayer(e.target.value)}>
                 <option value="">全部层级</option>
                 <option value="H">小时层</option>
                 <option value="D">日层</option>
                 <option value="W">周层</option>
               </select>
-              <select className="text-xs border border-gray-300 rounded px-2 py-1" value={fltStatus} onChange={e => setFltStatus(e.target.value)}>
+              <select style={selStyle} value={fltStatus} onChange={e => setFltStatus(e.target.value)}>
                 <option value="">全部状态</option>
                 <option value="ok">已执行</option>
                 <option value="pending">待确认</option>
               </select>
-              <span className="ml-auto text-xs text-gray-400">共 <strong>{filteredLog.length}</strong> 条</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af' }}>共 <strong style={{ color: '#374151' }}>{filteredLog.length}</strong> 条记录</span>
             </div>
-            <div className="overflow-x-auto max-h-[calc(100vh-280px)]">
-              <table className="w-full text-xs border-collapse">
+            {/* table */}
+            <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
+              <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-2 py-1.5 text-left text-gray-500 font-bold whitespace-nowrap">时间</th>
-                    <th className="px-2 py-1.5 text-left text-gray-500 font-bold">计划</th>
-                    <th className="px-2 py-1.5 text-left text-gray-500 font-bold">规则</th>
-                    <th className="px-2 py-1.5 text-left text-gray-500 font-bold">层级</th>
-                    <th className="px-2 py-1.5 text-left text-gray-500 font-bold">执行动作</th>
-                    <th className="px-2 py-1.5 text-left text-gray-500 font-bold">状态</th>
-                    <th className="px-2 py-1.5 text-left text-gray-500 font-bold">次日ROI变化</th>
+                  <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
+                    {['时间', '计划', '规则', '层级', '触发条件', '执行动作', '状态', '次日ROI变化'].map(h => (
+                      <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredLog.map((r, i) => {
-                    const lb = layerBg[r.layer]
+                    const ls = layerStyle(r.layer)
+                    // no raw ROI data in hist log
+                    const ok = !r.pending
                     return (
-                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-2 py-1.5 text-gray-400 whitespace-nowrap">{r.date}</td>
-                        <td className="px-2 py-1.5 font-semibold">{r.plan}</td>
-                        <td className="px-2 py-1.5">
-                          <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: r.color + '22', color: r.color, border: `1px solid ${r.color}44` }}>
-                            {r.rule}
-                          </span>
+                      <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}
+                        onMouseEnter={e2 => (e2.currentTarget.style.background = '#fafafa')}
+                        onMouseLeave={e2 => (e2.currentTarget.style.background = '')}>
+                        <td style={{ padding: '6px 8px', color: '#9ca3af', whiteSpace: 'nowrap' }}>{r.date}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 600 }}>{r.plan}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: r.rDef.color + '22', color: r.rDef.color, border: `1px solid ${r.rDef.color}44` }}>{r.rDef.key}</span>
                         </td>
-                        <td className="px-2 py-1.5">
-                          <span className="text-xs px-1 py-0.5 rounded" style={{ background: lb.bg, color: lb.color }}>{r.layerFull}</span>
+                        <td style={{ padding: '6px 8px' }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: ls.bg, color: ls.color }}>{r.rDef.layerFull}</span>
                         </td>
-                        <td className="px-2 py-1.5 text-gray-600 max-w-48 truncate">{r.action}</td>
-                        <td className="px-2 py-1.5">
-                          <span className={`font-semibold ${r.ok ? 'text-green-700' : 'text-yellow-600'}`}>
-                            {r.ok ? '✅ 已执行' : '⏳ 待确认'}
-                          </span>
+                        <td style={{ padding: '6px 8px', fontSize: 10, color: '#9ca3af', maxWidth: 180 }}>{r.rDef.trigger}</td>
+                        <td style={{ padding: '6px 8px', fontSize: 10, maxWidth: 200 }}>{r.action}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <span style={{ fontWeight: 700, color: ok ? '#2e7d32' : '#f57f17' }}>{ok ? '✅ 已执行' : '⏳ 待确认'}</span>
                         </td>
-                        <td className="px-2 py-1.5">
-                          <span className={`font-bold ${r.roiDelta > 0 ? 'text-red-600' : 'text-green-700'}`}>
-                            {r.roiDelta > 0 ? '↑' : '↓'}{Math.abs(r.roiDelta)}
-                          </span>
+                        <td style={{ padding: '6px 8px' }}>
+                          <span style={{ color: '#9ca3af' }}>—</span>
                         </td>
                       </tr>
                     )
@@ -258,12 +380,15 @@ export function RuleEnginePage({ onClose }: Props) {
           </div>
         )}
 
-        {/* ── 效果评估 ── */}
+        {/* ══ 效果评估 ══ */}
         {tab === 'eval' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-xl shadow-sm p-4">
-              <div className="text-xs text-gray-400 mb-2">基于30天历史执行数据，对比触发日前3日均值 vs 执行后3日均值，评估各规则实际效果。</div>
-              <div className="h-52">
+          <div>
+            <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
+              基于30天历史执行数据，对比触发日前3日均值 vs 执行后3日均值，评估各规则实际效果。
+            </div>
+            {/* chart */}
+            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', padding: 16, marginBottom: 16 }}>
+              <div style={{ height: 240 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -274,36 +399,46 @@ export function RuleEnginePage({ onClose }: Props) {
                     <Bar yAxisId="left" dataKey="roiDelta" name="ROI均变化" radius={[4, 4, 0, 0]}>
                       {chartData.map((d, i) => <Cell key={i} fill={d.fill} />)}
                     </Bar>
-                    <Line yAxisId="right" type="monotone" dataKey="triggers" stroke="rgba(63,81,181,.6)" strokeWidth={2} dot={{ r: 3 }} name="触发次数" />
+                    <Line yAxisId="right" type="monotone" dataKey="triggers" stroke="rgba(63,81,181,.7)" strokeWidth={2} dot={{ r: 3 }} name="触发次数" />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
-              {effData.map(e => {
+            {/* eval cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+              {RULE_DEFS.map(rd => {
+                const e = eff[rd.key] || { triggers: 0, pending: 0, successRate: 0, avgRoiDelta: null, avgFebiDelta: null, avgSpendDelta: null }
                 const fmt = (v: number | null, unit: string) => v == null ? '—' : `${v > 0 ? '+' : ''}${v}${unit}`
-                const roiGood = scaleUp.has(e.key) ? e.avgRoiDelta >= -0.05 : e.avgRoiDelta <= 0.1
+                const roiCls = e.avgRoiDelta == null ? 'neu' : scaleUp.has(rd.key) ? (e.avgRoiDelta >= -0.05 ? 'pos' : 'neg') : (e.avgRoiDelta < 0 ? 'pos' : e.avgRoiDelta > 0.2 ? 'neg' : 'neu')
+                const febiCls = e.avgFebiDelta == null ? 'neu' : scaleUp.has(rd.key) ? 'pos' : (e.avgFebiDelta < 0 ? 'pos' : e.avgFebiDelta > 2 ? 'neg' : 'neu')
+                const spendCls = e.avgSpendDelta == null ? 'neu' : costCut.has(rd.key) ? (e.avgSpendDelta < 0 ? 'pos' : 'neg') : (e.avgSpendDelta > 0 ? 'pos' : 'neu')
+                const clsColor = (c: string) => c === 'pos' ? '#2e7d32' : c === 'neg' ? '#c62828' : '#666'
+                const clsBg = (c: string) => c === 'pos' ? '#e8f5e9' : c === 'neg' ? '#ffebee' : '#f5f5f5'
                 return (
-                  <div key={e.key} className="bg-white rounded-xl shadow-sm p-3">
-                    <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                      <span className="text-sm">{e.icon}</span>
-                      <span className="font-bold text-xs" style={{ color: e.color }}>{e.key}</span>
-                      <span className="text-xs text-gray-500">{e.label}</span>
-                      <span className="ml-auto text-xs text-gray-400">n={e.triggers}</span>
+                  <div key={rd.key} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', padding: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 15 }}>{rd.icon}</span>
+                      <span style={{ fontWeight: 800, fontSize: 12, color: rd.color }}>{rd.key}</span>
+                      <span style={{ fontSize: 11, color: '#6b7280' }}>{rd.label}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 10, color: '#9ca3af', background: '#f5f5f5', padding: '1px 5px', borderRadius: 4 }}>n={e.triggers}</span>
                     </div>
                     {[
-                      ['触发后ROI变化', fmt(e.avgRoiDelta, ''), roiGood],
-                      ['费比变化', fmt(e.avgFebiDelta, '%'), costCut.has(e.key) ? e.avgFebiDelta != null && e.avgFebiDelta < 0 : true],
-                      ['花费变化', fmt(e.avgSpendDelta, '%'), costCut.has(e.key) ? e.avgSpendDelta != null && e.avgSpendDelta < 0 : true],
-                    ].map(([label, val, good]) => (
-                      <div key={String(label)} className="flex justify-between text-xs border-b border-gray-100 py-1">
-                        <span className="text-gray-500">{String(label)}</span>
-                        <span className={`font-bold ${good ? 'text-green-700' : 'text-red-700'}`}>{String(val)}</span>
+                      ['触发后ROI均变化', fmt(e.avgRoiDelta, ''), roiCls],
+                      ['费比均变化', fmt(e.avgFebiDelta, '%'), febiCls],
+                      ['花费均变化', fmt(e.avgSpendDelta, '%'), spendCls],
+                    ].map(([label, val, cls]) => (
+                      <div key={String(label)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, borderBottom: '1px solid #f3f4f6', padding: '5px 0' }}>
+                        <span style={{ color: '#6b7280' }}>{String(label)}</span>
+                        <span style={{ fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: clsBg(String(cls)), color: clsColor(String(cls)) }}>{String(val)}</span>
                       </div>
                     ))}
-                    <div className="flex justify-between text-xs py-1">
-                      <span className="text-gray-500">执行率</span>
-                      <span className="font-bold text-indigo-800">{e.successRate}%</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '5px 0', borderBottom: '1px solid #f3f4f6' }}>
+                      <span style={{ color: '#6b7280' }}>执行率</span>
+                      <span style={{ fontWeight: 700, color: '#283593' }}>{e.successRate}%</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '5px 0' }}>
+                      <span style={{ color: '#6b7280' }}>待确认</span>
+                      <span style={{ color: (e.pending ?? 0) > 0 ? '#c62828' : '#2e7d32', fontWeight: 700 }}>{e.pending ?? 0} 项</span>
                     </div>
                   </div>
                 )
@@ -312,88 +447,327 @@ export function RuleEnginePage({ onClose }: Props) {
           </div>
         )}
 
-        {/* ── 规则参数 ── */}
+        {/* ══ 规则参数 ══ */}
         {tab === 'config' && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="px-4 py-3 font-bold text-sm border-b border-gray-100">📋 规则总体参数配置</div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    {['规则', '层级', '触发条件', '执行动作', '执行方式', '状态'].map(h => (
-                      <th key={h} className="px-3 py-2 text-left font-bold text-gray-500">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {RULE_DEFS.map(rd => {
-                    const lb = layerBg[rd.layer]
-                    return (
-                      <tr key={rd.key} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-3 py-2">
-                          <div className="font-bold" style={{ color: rd.color }}>{rd.icon} {rd.key}</div>
-                          <div className="text-gray-400">{rd.label}</div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: lb.bg, color: lb.color }}>{rd.layerFull}</span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-600 max-w-48">{rd.trigger}</td>
-                        <td className="px-3 py-2 text-gray-600 max-w-48">{rd.action}</td>
-                        <td className="px-3 py-2">
-                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${rd.auto ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {rd.auto ? '🤖 自动' : '👤 人工确认'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="text-xs text-green-700 font-semibold">● 运行中</span>
-                        </td>
+          <div>
+            {/* Section 1: rule overview table */}
+            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', marginBottom: 16, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #f0f0f0' }}>📋 规则总体参数</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
+                      {['规则', '层级', '触发条件', '执行动作', '执行方式', '状态'].map(h => (
+                        <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {RULE_DEFS.map(rd => {
+                      const ls = layerStyle(rd.layer)
+                      return (
+                        <tr key={rd.key} style={{ borderBottom: '1px solid #f3f4f6' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
+                          onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                          <td style={{ padding: '6px 10px' }}>
+                            <div style={{ fontWeight: 700, color: rd.color }}>{rd.icon} {rd.key}</div>
+                            <div style={{ fontSize: 10, color: '#9ca3af' }}>{rd.label}</div>
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: ls.bg, color: ls.color, fontWeight: 700 }}>{rd.layerFull}</span>
+                          </td>
+                          <td style={{ padding: '6px 10px', fontSize: 10, color: '#4b5563', maxWidth: 220 }}>{rd.trigger}</td>
+                          <td style={{ padding: '6px 10px', fontSize: 10, maxWidth: 220 }}>{rd.action}</td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: rd.auto ? '#e8f5e9' : '#fff8e1', color: rd.auto ? '#2e7d32' : '#f57f17' }}>
+                              {rd.auto ? '🤖 自动' : '👤 人工确认'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#4caf50', marginRight: 4 }} />
+                            <span style={{ fontSize: 10, color: '#2e7d32', fontWeight: 600 }}>运行中</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Section 2: threshold params */}
+            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #f0f0f0' }}>⚙️ 阈值参数配置</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
+                      {['参数名', '当前值', '说明'].map(h => (
+                        <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* H layer header */}
+                    <tr style={{ background: '#fff3e0' }}>
+                      <td colSpan={3} style={{ padding: '4px 10px', fontWeight: 700, color: '#e65100', fontSize: 10 }}>🕐 小时层规则（H）</td>
+                    </tr>
+                    {([
+                      ['R1-A 动态阈值窗口', '28天', '计算同段均值±2σ所用历史天数'],
+                      ['R1-A 触发：ROI完成率上限', '< 80%', '同时满足零成交+零加购才触发暂停'],
+                      ['R1-B 预估亏损判断基准', '昨日全天花费', '全天收益投影低于此值触发'],
+                      ['R1-B ROI上调幅度', '×1.15（+15%）', '净目标投产比自动上调比例'],
+                      ['R1-B 剩余预算收缩', '×0.80', '当日已花费+剩余×0.8=新预算'],
+                      ['R2-A ROI完成率触发线', '< 60%', '累计成交额÷花费÷目标ROI'],
+                      ['R2-A ROI上调幅度', '×1.18（+18%）', '完成率过低时强力收紧出价'],
+                      ['R2-A 剩余预算收缩', '×0.70', '剩余预算大幅削减'],
+                      ['R2-B 止损ROI', '1 ÷ Gross毛利率', '各计划独立计算；超盈亏平衡即触发'],
+                      ['R2-B ROI目标', '止损ROI × 1.10', '缓冲10%防止频繁触发'],
+                      ['R2-B 剩余预算收缩', '×0.60', '红区止损最强预算压力'],
+                      ['R2-C ROI上调幅度', '×1.10（+10%）', '黄区+全店余量不足时联动收紧'],
+                      ['R2-C 剩余预算收缩', '×0.80', '配合ROI收紧的预算压力'],
+                      ['R3 ROI完成率触发线', '≥ 130%', '绿区且ROI明显超目标才追量'],
+                      ['R3 预算追加幅度', '+15~20%', '按过去3小时均花费×剩余小时数×15%'],
+                      ['R3 置信度要求', '高置信度', '有花费≥9小时且预测误差<20%'],
+                      ['R4 CTR动态阈值', '28日均值 − 2σ', '低于此值记录预警，不操作出价'],
+                    ] as [string, string, string][]).map(([name, val, desc]) => (
+                      <tr key={name} style={{ borderBottom: '1px solid #f3f4f6' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                        <td style={{ padding: '5px 10px', color: '#374151' }}>{name}</td>
+                        <td style={{ padding: '5px 10px', fontWeight: 700, color: '#283593' }}>{val}</td>
+                        <td style={{ padding: '5px 10px', color: '#9ca3af' }}>{desc}</td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                    {/* D layer header */}
+                    <tr style={{ background: '#e8eaf6' }}>
+                      <td colSpan={3} style={{ padding: '4px 10px', fontWeight: 700, color: '#283593', fontSize: 10 }}>📅 日层规则（D）</td>
+                    </tr>
+                    {([
+                      ['DT1 费比目标线', 'Gross毛利率 − 10%', '超过此线触发轻度收紧'],
+                      ['DT1 ROI上调幅度', '×1.08（+8%）', '超目标费比时轻度收紧出价'],
+                      ['DT1 次日预算压缩', '×0.90', '配合ROI收紧的次日预算'],
+                      ['DT2 加购率触发倍数', '品类均值 × 1.5', '加购率超此倍数触发保护'],
+                      ['DT2 保护天数', '品类延迟中位数', '历史加购→成交延迟P50天数'],
+                      ['DT3 预算耗尽预测时点', '< 18:00', '晚高峰前耗尽才触发预算追加'],
+                      ['DT3 次日预算追加', '×1.20（+20%）', '需绿区且中/高置信度才执行'],
+                      ['DT4 零转化花费门槛', '> 200元', '低于此值的零转化不处理'],
+                      ['DT4 最低投放天数', '≥ 3天', '新计划前3天豁免DT4'],
+                      ['DT5 冷启动期计算', '品类历史P80天数', '各类目独立计算，非固定天数'],
+                      ['DT5 费比容忍上限', 'Gross毛利率 × 1.20', '冷启动期允许费比超目标至此'],
+                    ] as [string, string, string][]).map(([name, val, desc]) => (
+                      <tr key={name} style={{ borderBottom: '1px solid #f3f4f6' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                        <td style={{ padding: '5px 10px', color: '#374151' }}>{name}</td>
+                        <td style={{ padding: '5px 10px', fontWeight: 700, color: '#283593' }}>{val}</td>
+                        <td style={{ padding: '5px 10px', color: '#9ca3af' }}>{desc}</td>
+                      </tr>
+                    ))}
+                    {/* W layer header */}
+                    <tr style={{ background: '#e8f5e9' }}>
+                      <td colSpan={3} style={{ padding: '4px 10px', fontWeight: 700, color: '#2e7d32', fontSize: 10 }}>📆 周层规则（W）</td>
+                    </tr>
+                    {([
+                      ['WK1 全店周毛利目标', '10%', '顶层约束；旺季+2%，淡季-2%'],
+                      ['WK1 超额松绑幅度', 'ROI下调5%', '超额>+3%才松绑黄区B类计划'],
+                      ['WK1 不达标-红区操作', 'ROI+15% + 预算×0.70', '红区计划本周收紧'],
+                      ['WK1 不达标-黄区操作', 'ROI+8% + 预算×0.85', '黄区计划本周轻压'],
+                      ['WK2 加购率触发倍数', '品类均值 × 1.30', '高加购+低即时ROI判定高潜力'],
+                      ['WK2 预算追加幅度', '+30%', '本周每日预算大幅追加'],
+                      ['WK2 ROI下调幅度', '×0.92（-8%）', '降低ROI目标放量捕获潜在转化'],
+                      ['WK3 红区连续周数', '≥ 3周', '连续三周费比超盈亏平衡才触发'],
+                      ['WK3 加购量触发线', '品类均值 × 0.30', '加购极低说明流量/商品双重问题'],
+                      ['WK3 最低预算维持', '×0.30', '保留最低消耗积累数据等待人工决策'],
+                      ['WK4 利用率过低触发线', '< 60%', '建议ROI下调5~10%提升竞争力'],
+                      ['WK4 早耗尽触发时点', '12:00前耗尽', '建议预算×1.50'],
+                      ['WK5 增量ROI曲线数据量', '≥ 12周', '不足4周时退化为三区间规则'],
+                      ['WK5 模型拟合质量要求', 'R² ≥ 0.50', '低于0.5降权结合规则方法'],
+                    ] as [string, string, string][]).map(([name, val, desc]) => (
+                      <tr key={name} style={{ borderBottom: '1px solid #f3f4f6' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                        <td style={{ padding: '5px 10px', color: '#374151' }}>{name}</td>
+                        <td style={{ padding: '5px 10px', fontWeight: 700, color: '#283593' }}>{val}</td>
+                        <td style={{ padding: '5px 10px', color: '#9ca3af' }}>{desc}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
-        {/* ── 历史回测 ── */}
+        {/* ══ 历史回测 ══ */}
         {tab === 'backtest' && (
-          <div className="flex gap-4">
-            <div className="w-56 flex-shrink-0 bg-white rounded-xl shadow-sm p-4">
-              <div className="font-bold text-sm mb-3">回测参数设置</div>
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="text-gray-500 block mb-1">时间范围</label>
-                  <select className="w-full border border-gray-300 rounded px-2 py-1 text-xs">
-                    <option>最近30天</option>
-                    <option>最近14天</option>
-                    <option>最近7天</option>
-                  </select>
+          <div style={{ display: 'flex', gap: 16 }}>
+            {/* Left control panel */}
+            <div style={{ width: 268, flexShrink: 0, background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', padding: 16, alignSelf: 'flex-start' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 14 }}>🔧 模拟参数</div>
+
+              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>开始日期</div>
+              <input type="date" value={btStart} onChange={e => setBtStart(e.target.value)}
+                style={{ width: '100%', fontSize: 11, border: '1px solid #ddd', borderRadius: 6, padding: '4px 8px', marginBottom: 10, boxSizing: 'border-box' }} />
+
+              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>结束日期</div>
+              <input type="date" value={btEnd} onChange={e => setBtEnd(e.target.value)}
+                style={{ width: '100%', fontSize: 11, border: '1px solid #ddd', borderRadius: 6, padding: '4px 8px', marginBottom: 10, boxSizing: 'border-box' }} />
+
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Gross毛利率%</div>
+                  <input type="number" value={btGross} onChange={e => setBtGross(+e.target.value)}
+                    style={{ width: '100%', fontSize: 11, border: '1px solid #ddd', borderRadius: 6, padding: '4px 8px', boxSizing: 'border-box' }} />
                 </div>
-                <div>
-                  <label className="text-gray-500 block mb-1">选择规则</label>
-                  <select className="w-full border border-gray-300 rounded px-2 py-1 text-xs">
-                    <option>全部规则</option>
-                    {RULE_DEFS.map(r => <option key={r.key}>{r.key}</option>)}
-                  </select>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>周毛利目标%</div>
+                  <input type="number" value={btWeekly} onChange={e => setBtWeekly(+e.target.value)}
+                    style={{ width: '100%', fontSize: 11, border: '1px solid #ddd', borderRadius: 6, padding: '4px 8px', boxSizing: 'border-box' }} />
                 </div>
-                <div>
-                  <label className="text-gray-500 block mb-1">选择计划</label>
-                  <select className="w-full border border-gray-300 rounded px-2 py-1 text-xs">
-                    <option>全部计划</option>
-                  </select>
-                </div>
-                <button className="w-full py-2 rounded-lg bg-indigo-800 text-white font-semibold text-xs">
-                  运行回测
-                </button>
               </div>
+
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, marginTop: 4 }}>📋 规则选择</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                <button onClick={() => setBtRules(new Set(RULE_DEFS.map(r => r.key)))}
+                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, border: '1px solid #ddd', cursor: 'pointer', background: '#f9fafb' }}>全选</button>
+                <button onClick={() => setBtRules(new Set())}
+                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, border: '1px solid #ddd', cursor: 'pointer', background: '#f9fafb' }}>取消</button>
+              </div>
+
+              {/* H layer */}
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#e65100', background: '#fff3e0', padding: '3px 6px', borderRadius: 4, marginBottom: 4 }}>🕐 小时层</div>
+              {RULE_DEFS.filter(r => r.layer === 'H').map(r => (
+                <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
+                  <input type="checkbox" checked={btRules.has(r.key)} onChange={e => {
+                    const s = new Set(btRules); e.target.checked ? s.add(r.key) : s.delete(r.key); setBtRules(s)
+                  }} style={{ margin: 0 }} />
+                  <span>{r.icon}</span>
+                  <span style={{ color: r.color, fontWeight: 700 }}>{r.key}</span>
+                  <span style={{ color: '#6b7280' }}>{r.label}</span>
+                </label>
+              ))}
+
+              {/* D layer */}
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#283593', background: '#e8eaf6', padding: '3px 6px', borderRadius: 4, marginBottom: 4, marginTop: 8 }}>📅 日层</div>
+              {RULE_DEFS.filter(r => r.layer === 'D').map(r => (
+                <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
+                  <input type="checkbox" checked={btRules.has(r.key)} onChange={e => {
+                    const s = new Set(btRules); e.target.checked ? s.add(r.key) : s.delete(r.key); setBtRules(s)
+                  }} style={{ margin: 0 }} />
+                  <span>{r.icon}</span>
+                  <span style={{ color: r.color, fontWeight: 700 }}>{r.key}</span>
+                  <span style={{ color: '#6b7280' }}>{r.label}</span>
+                </label>
+              ))}
+
+              {/* W layer */}
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#2e7d32', background: '#e8f5e9', padding: '3px 6px', borderRadius: 4, marginBottom: 4, marginTop: 8 }}>📆 周层</div>
+              {RULE_DEFS.filter(r => r.layer === 'W').map(r => (
+                <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
+                  <input type="checkbox" checked={btRules.has(r.key)} onChange={e => {
+                    const s = new Set(btRules); e.target.checked ? s.add(r.key) : s.delete(r.key); setBtRules(s)
+                  }} style={{ margin: 0 }} />
+                  <span>{r.icon}</span>
+                  <span style={{ color: r.color, fontWeight: 700 }}>{r.key}</span>
+                  <span style={{ color: '#6b7280' }}>{r.label}</span>
+                </label>
+              ))}
+
+              <button
+                onClick={() => setBtResult(runBacktest(btStart, btEnd, btGross / 100, btWeekly / 100, btRules))}
+                style={{ width: '100%', padding: '9px', marginTop: 14, borderRadius: 8, background: '#3730a3', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', border: 'none' }}>
+                ▶ 运行回测
+              </button>
             </div>
-            <div className="flex-1 bg-white rounded-xl shadow-sm p-4">
-              <div className="text-center text-gray-400 py-16 text-sm">
-                <div className="text-3xl mb-3">🔬</div>
-                <div className="font-semibold">历史回测功能</div>
-                <div className="text-xs mt-2">设置参数后点击"运行回测"查看结果<br/>将对比规则干预 vs 不干预的收益差异</div>
-              </div>
+
+            {/* Right result panel */}
+            <div style={{ flex: 1 }}>
+              {!btResult ? (
+                <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🧪</div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>历史回测</div>
+                  <div style={{ fontSize: 12, marginTop: 8, lineHeight: 1.6 }}>设置左侧参数后点击"▶ 运行回测"<br />将对比规则干预 vs 无干预的收益差异</div>
+                </div>
+              ) : (
+                <div>
+                  {/* KPI cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>
+                    {([
+                      ['预计ROI改善', btResult.avgRoiImprove > 0 ? `+${btResult.avgRoiImprove.toFixed(3)}` : btResult.avgRoiImprove.toFixed(3), btResult.avgRoiImprove >= 0 ? '#2e7d32' : '#c62828'],
+                      ['预计费比改善', btResult.avgFebiImprove > 0 ? `-${(btResult.avgFebiImprove * 100).toFixed(1)}%` : `+${(Math.abs(btResult.avgFebiImprove) * 100).toFixed(1)}%`, btResult.avgFebiImprove >= 0 ? '#2e7d32' : '#c62828'],
+                      ['触发总次数', btResult.totalTriggers, '#3730a3'],
+                      ['自动执行次数', btResult.autoCount, '#2e7d32'],
+                      ['预算优化额', `¥${Math.round(btResult.budgetSaved).toLocaleString()}`, '#1565c0'],
+                    ] as [string, string | number, string][]).map(([l, v, c], i) => (
+                      <div key={i} style={{ background: '#fff', borderRadius: 10, padding: 10, textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: c }}>{v}</div>
+                        <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Trend chart */}
+                  <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', padding: 14, marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>📈 费比趋势对比（有规则 vs 无规则）</div>
+                    <div style={{ height: 200 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={btResult.trendData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="date" tick={{ fontSize: 9 }} interval={4} />
+                          <YAxis tick={{ fontSize: 9 }} tickFormatter={v => (v * 100).toFixed(1) + '%'} />
+                          <Tooltip formatter={(v) => typeof v === 'number' ? (v * 100).toFixed(2) + '%' : v} />
+                          <Line type="monotone" dataKey="withRule" stroke="#283593" strokeWidth={2} dot={false} name="有规则" />
+                          <Line type="monotone" dataKey="noRule" stroke="#c62828" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="无规则" />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Detail table */}
+                  <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: 12, borderBottom: '1px solid #f0f0f0' }}>📋 详细回测结果</div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#f9fafb' }}>
+                            {['日期', '计划', '触发规则', '执行动作', '预估ROI变化', '预估费比变化', '执行方式'].map(h => (
+                              <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {btResult.detailRows.map((r, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                              <td style={{ padding: '5px 8px', color: '#9ca3af' }}>{r.date}</td>
+                              <td style={{ padding: '5px 8px', fontWeight: 600 }}>{r.plan}</td>
+                              <td style={{ padding: '5px 8px' }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: r.rDef.color + '22', color: r.rDef.color, border: `1px solid ${r.rDef.color}44` }}>{r.rule}</span>
+                              </td>
+                              <td style={{ padding: '5px 8px', fontSize: 10, color: '#4b5563', maxWidth: 180 }}>{r.action}</td>
+                              <td style={{ padding: '5px 8px' }}>
+                                <span style={{ fontWeight: 700, color: r.estRoiDelta >= 0 ? '#2e7d32' : '#c62828' }}>
+                                  {r.estRoiDelta >= 0 ? '↑' : '↓'}{Math.abs(r.estRoiDelta)}
+                                </span>
+                              </td>
+                              <td style={{ padding: '5px 8px' }}>
+                                <span style={{ fontWeight: 700, color: r.estFebiDelta <= 0 ? '#2e7d32' : '#c62828' }}>
+                                  {r.estFebiDelta <= 0 ? '↓' : '↑'}{Math.abs(r.estFebiDelta)}%
+                                </span>
+                              </td>
+                              <td style={{ padding: '5px 8px' }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: r.auto ? '#e8f5e9' : '#fff8e1', color: r.auto ? '#2e7d32' : '#f57f17' }}>
+                                  {r.auto ? '🤖 自动' : '👤 人工确认'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
