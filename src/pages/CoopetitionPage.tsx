@@ -47,18 +47,22 @@ export function CoopetitionPage({ onClose }: Props) {
     const totalSpend = g.members.reduce((s, m) => s + m.plan.spend, 0)
     const totalRev = g.members.reduce((s, m) => s + (m.plan.febi > 0 ? m.plan.spend / m.plan.febi : 0), 0)
     const mergedFebi = totalRev > 0 ? totalSpend / totalRev : 0
+    // 合并盈亏线 = 营收加权毛利率(各店定价不同 → 毛利率不同,按各店营收占比加权)
+    const mergedGross = totalRev > 0
+      ? g.members.reduce((s, m) => s + (m.plan.febi > 0 ? m.plan.spend / m.plan.febi : 0) * m.plan.gross, 0) / totalRev
+      : 0
     const totalBudget = g.members.reduce((s, m) => s + m.plan.budget, 0)
     // 同时追量:绿区且 R3/追量中
     const simulTui = g.members.filter(m => zoneOf(m.plan.febi, m.plan.gross) === 'green' && /R3|追量/.test(m.plan.rule)).length
     const highOv = (['kw', 'crowd', 'time', 'price'] as const).filter(d => g.overlap[d] === 'high').length
-    const overGross = mergedFebi > g.gross
+    const overGross = mergedFebi > mergedGross
     const priceWar = g.overlap.price === 'high' && (overGross || g.members.some(m => zoneOf(m.plan.febi, m.plan.gross) === 'red'))
 
     // 竞合判定
     let verdict: { level: 'good' | 'warn' | 'bad'; tag: string; advice: string }
     const leader = ranked[0]
     if (priceWar || overGross) {
-      verdict = { level: 'bad', tag: '🔴 价格战/合并亏损', advice: `合并费比${(mergedFebi * 100).toFixed(1)}% ${overGross ? '已破' : '逼近'}盈亏线${(g.gross * 100).toFixed(0)}%。建议:统一最低价防自杀式压价 + 两店同步收紧ROI,先止血再谈分工。` }
+      verdict = { level: 'bad', tag: '🔴 价格战/合并亏损', advice: `合并费比${(mergedFebi * 100).toFixed(1)}% ${overGross ? '已破' : '逼近'}加权盈亏线${(mergedGross * 100).toFixed(1)}%。各店定价不同盈亏线不同,定价更低的店红得更深。建议:统一最低限价防自杀式压价 + 同步收紧ROI,先止血再谈分工。` }
     } else if (simulTui >= 2) {
       verdict = { level: 'bad', tag: '🔴 多店同时追量', advice: `${simulTui}家店同款同时绿区追量,在同竞价场互相抬价。建议:仅保留主推店「${leader.storeName}」(赛马第1)追量,其余店该款冻结 R3/DT3。` }
     } else if (highOv >= 2) {
@@ -66,7 +70,7 @@ export function CoopetitionPage({ onClose }: Props) {
     } else {
       verdict = { level: 'good', tag: '✅ 良性竞争·放开赛马', advice: `各维度重叠低,覆盖不同流量,1+1>2。建议:放开赛马,谁合并ROI高给谁倾斜预算。` }
     }
-    return { ranked, rankMap, roleOf, mergedFebi, totalSpend, totalBudget, simulTui, highOv, overGross, verdict }
+    return { ranked, rankMap, roleOf, mergedFebi, mergedGross, totalSpend, totalBudget, simulTui, highOv, overGross, verdict }
   }
 
   const analyzed = groups.map(g => ({ g, a: analyze(g) }))
@@ -111,13 +115,13 @@ export function CoopetitionPage({ onClose }: Props) {
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 200 }}>
                 <div style={{ fontWeight: 800, fontSize: 14 }}>{g.title}</div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>条码 {g.barcode} · 涉及 {g.members.length} 家店 · 盈亏线 {(g.gross * 100).toFixed(0)}%</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>条码 {g.barcode} · 成本 ¥{g.cost}(跨店一致) · 涉及 {g.members.length} 家店 · 加权盈亏线 {(a.mergedGross * 100).toFixed(1)}%</div>
               </div>
               {/* 合并指标 */}
               <div style={{ display: 'flex', gap: 16, fontSize: 11 }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontWeight: 800, fontSize: 15, color: a.overGross ? '#c62828' : '#2e7d32' }}>{(a.mergedFebi * 100).toFixed(1)}%</div>
-                  <div style={{ color: '#9ca3af' }}>合并费比{a.overGross ? ' ⚠超线' : ''}</div>
+                  <div style={{ color: '#9ca3af' }}>合并费比{a.overGross ? ' ⚠超线' : ` / 线${(a.mergedGross * 100).toFixed(0)}%`}</div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontWeight: 800, fontSize: 15, color: '#374151' }}>¥{a.totalSpend.toLocaleString()}</div>
@@ -144,7 +148,7 @@ export function CoopetitionPage({ onClose }: Props) {
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f9fafb' }}>
-                    {['赛马', '店铺', '前台商品(skuId各异)', '区间', '费比', 'ROI目标', '今日花费', '规则', '角色'].map(h => (
+                    {['赛马', '店铺', '前台商品(skuId各异)', '前台定价', '毛利率/盈亏线', '区间', '费比', 'ROI目标', '今日花费', '规则', '角色'].map(h => (
                       <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -166,6 +170,12 @@ export function CoopetitionPage({ onClose }: Props) {
                         <td style={{ padding: '6px 10px' }}>
                           <div style={{ fontWeight: 600 }}>{m.plan.name}</div>
                           <div style={{ fontSize: 10, color: '#9ca3af' }}>{m.plan.skuId}</div>
+                        </td>
+                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                          {m.plan.price ? <span style={{ fontWeight: 700 }}>¥{m.plan.price}</span> : '—'}
+                        </td>
+                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontWeight: 700, color: '#374151' }}>{(m.plan.gross * 100).toFixed(0)}%</span>
                         </td>
                         <td style={{ padding: '6px 10px' }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: zoneClr[z] }}>{zoneCN[z]}</span>
