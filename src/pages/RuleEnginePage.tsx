@@ -133,6 +133,54 @@ export function RuleEnginePage({ onClose }: Props) {
   const [fltLayer, setFltLayer] = useState('')
   const [fltStatus, setFltStatus] = useState('')
 
+  // Config tab: editable threshold params
+  type ThresholdRow = { name: string; val: string; desc: string; layer: 'H' | 'D' | 'W' }
+  const defaultParams: ThresholdRow[] = [
+    { layer: 'H', name: 'R1-A 动态阈值窗口', val: '28天', desc: '计算同段均值±2σ所用历史天数' },
+    { layer: 'H', name: 'R1-A ROI完成率上限', val: '< 80%', desc: '同时满足零成交+零加购才触发暂停' },
+    { layer: 'H', name: 'R1-B ROI上调幅度', val: '×1.15', desc: '净目标投产比自动上调比例' },
+    { layer: 'H', name: 'R1-B 剩余预算收缩', val: '×0.80', desc: '当日已花费+剩余×0.8=新预算' },
+    { layer: 'H', name: 'R2-A ROI完成率触发线', val: '< 60%', desc: '累计成交额÷花费÷目标ROI' },
+    { layer: 'H', name: 'R2-A ROI上调幅度', val: '×1.18', desc: '完成率过低时强力收紧出价' },
+    { layer: 'H', name: 'R2-A 剩余预算收缩', val: '×0.70', desc: '剩余预算大幅削减' },
+    { layer: 'H', name: 'R2-B 止损ROI缓冲', val: '×1.10', desc: '止损ROI×1.10作为新ROI目标' },
+    { layer: 'H', name: 'R2-B 剩余预算收缩', val: '×0.60', desc: '红区止损最强预算压力' },
+    { layer: 'H', name: 'R2-C ROI上调幅度', val: '×1.10', desc: '黄区+全店余量不足时联动收紧' },
+    { layer: 'H', name: 'R2-C 剩余预算收缩', val: '×0.80', desc: '配合ROI收紧的预算压力' },
+    { layer: 'H', name: 'R3 ROI完成率触发线', val: '≥ 130%', desc: '绿区且ROI明显超目标才追量' },
+    { layer: 'H', name: 'R3 预算追加幅度', val: '+15~20%', desc: '按过去3小时均花费×剩余小时数×15%' },
+    { layer: 'H', name: 'R4 CTR动态阈值', val: '28日 −2σ', desc: '低于此值记录预警，不操作出价' },
+    { layer: 'D', name: 'DT1 ROI上调幅度', val: '×1.08', desc: '超目标费比时轻度收紧出价' },
+    { layer: 'D', name: 'DT1 次日预算压缩', val: '×0.90', desc: '配合ROI收紧的次日预算' },
+    { layer: 'D', name: 'DT2 加购率触发倍数', val: '×1.5', desc: '加购率超品类均值此倍数触发保护' },
+    { layer: 'D', name: 'DT3 预算耗尽预测时点', val: '< 18:00', desc: '晚高峰前耗尽才触发预算追加' },
+    { layer: 'D', name: 'DT3 次日预算追加', val: '×1.20', desc: '需绿区且中/高置信度才执行' },
+    { layer: 'D', name: 'DT4 零转化花费门槛', val: '> 200元', desc: '低于此值的零转化不处理' },
+    { layer: 'D', name: 'DT5 费比容忍上限', val: 'Gross×1.20', desc: '冷启动期允许费比超目标至此' },
+    { layer: 'W', name: 'WK1 全店周毛利目标', val: '10%', desc: '顶层约束；旺季+2%，淡季-2%' },
+    { layer: 'W', name: 'WK1 超额松绑幅度', val: 'ROI−5%', desc: '超额>+3%才松绑黄区B类计划' },
+    { layer: 'W', name: 'WK1 不达标红区操作', val: 'ROI+15% ×0.70', desc: '红区计划本周收紧' },
+    { layer: 'W', name: 'WK1 不达标黄区操作', val: 'ROI+8% ×0.85', desc: '黄区计划本周轻压' },
+    { layer: 'W', name: 'WK2 加购率触发倍数', val: '×1.30', desc: '高加购+低即时ROI判定高潜力' },
+    { layer: 'W', name: 'WK2 预算追加幅度', val: '+30%', desc: '本周每日预算大幅追加' },
+    { layer: 'W', name: 'WK2 ROI下调幅度', val: '×0.92', desc: '降低ROI目标放量捕获潜在转化' },
+    { layer: 'W', name: 'WK3 红区连续周数', val: '≥ 3周', desc: '连续三周费比超盈亏平衡才触发' },
+    { layer: 'W', name: 'WK3 最低预算维持', val: '×0.30', desc: '保留最低消耗积累数据' },
+    { layer: 'W', name: 'WK4 利用率过低触发线', val: '< 60%', desc: '建议ROI下调5~10%提升竞争力' },
+    { layer: 'W', name: 'WK5 模型拟合质量要求', val: 'R² ≥ 0.50', desc: '低于0.5降权结合规则方法' },
+  ]
+  const [params, setParams] = useState<ThresholdRow[]>(defaultParams)
+  const [savedParams, setSavedParams] = useState<ThresholdRow[]>(defaultParams)
+  const [ruleEnabled, setRuleEnabled] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(RULE_DEFS.map(r => [r.key, true]))
+  )
+
+  const dirtyCount = params.filter((p, i) => p.val !== savedParams[i]?.val).length +
+    RULE_DEFS.filter(r => !ruleEnabled[r.key]).length
+
+  function saveParams() { setSavedParams([...params]) }
+  function resetParams() { setParams([...defaultParams]); setSavedParams([...defaultParams]); setRuleEnabled(Object.fromEntries(RULE_DEFS.map(r => [r.key, true]))) }
+
   // Backtest state
   const [btStart, setBtStart] = useState('2026-04-29')
   const [btEnd, setBtEnd] = useState('2026-05-28')
@@ -447,155 +495,111 @@ export function RuleEnginePage({ onClose }: Props) {
           </div>
         )}
 
-        {/* ══ 规则参数 ══ */}
+        {/* ══ 规则参数（可编辑） ══ */}
         {tab === 'config' && (
-          <div>
-            {/* Section 1: rule overview table */}
+          <div style={{ paddingBottom: dirtyCount > 0 ? 64 : 0 }}>
+            {/* Section 1: rule enable/disable */}
             <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', marginBottom: 16, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 16px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #f0f0f0' }}>📋 规则总体参数</div>
+              <div style={{ padding: '10px 16px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>📋 规则启停控制</span>
+                <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 400 }}>点击开关可单独启停规则</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 14 }}>
+                {RULE_DEFS.map(rd => {
+                  const enabled = ruleEnabled[rd.key] !== false
+                  const ls = layerStyle(rd.layer)
+                  return (
+                    <button key={rd.key}
+                      onClick={() => setRuleEnabled(prev => ({ ...prev, [rd.key]: !enabled }))}
+                      style={{
+                        padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: '1.5px solid',
+                        borderColor: enabled ? ls.color : '#e5e7eb',
+                        background: enabled ? ls.bg : '#f9fafb',
+                        color: enabled ? ls.color : '#9ca3af',
+                        opacity: enabled ? 1 : 0.6,
+                        transition: 'all .15s',
+                      }}>
+                      {rd.icon} {rd.key} {enabled ? '✓' : '✕'}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Section 2: editable threshold params */}
+            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>⚙️ 阈值参数配置</span>
+                <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 400 }}>直接修改参数值，底部保存生效</span>
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
-                      {['规则', '层级', '触发条件', '执行动作', '执行方式', '状态'].map(h => (
-                        <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
+                    <tr style={{ background: '#f9fafb' }}>
+                      {['参数名', '当前值（可编辑）', '说明'].map(h => (
+                        <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {RULE_DEFS.map(rd => {
-                      const ls = layerStyle(rd.layer)
-                      return (
-                        <tr key={rd.key} style={{ borderBottom: '1px solid #f3f4f6' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
-                          onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                          <td style={{ padding: '6px 10px' }}>
-                            <div style={{ fontWeight: 700, color: rd.color }}>{rd.icon} {rd.key}</div>
-                            <div style={{ fontSize: 10, color: '#9ca3af' }}>{rd.label}</div>
-                          </td>
-                          <td style={{ padding: '6px 10px' }}>
-                            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: ls.bg, color: ls.color, fontWeight: 700 }}>{rd.layerFull}</span>
-                          </td>
-                          <td style={{ padding: '6px 10px', fontSize: 10, color: '#4b5563', maxWidth: 220 }}>{rd.trigger}</td>
-                          <td style={{ padding: '6px 10px', fontSize: 10, maxWidth: 220 }}>{rd.action}</td>
-                          <td style={{ padding: '6px 10px' }}>
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: rd.auto ? '#e8f5e9' : '#fff8e1', color: rd.auto ? '#2e7d32' : '#f57f17' }}>
-                              {rd.auto ? '🤖 自动' : '👤 人工确认'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '6px 10px' }}>
-                            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#4caf50', marginRight: 4 }} />
-                            <span style={{ fontSize: 10, color: '#2e7d32', fontWeight: 600 }}>运行中</span>
-                          </td>
-                        </tr>
-                      )
+                    {(['H', 'D', 'W'] as const).map(layer => {
+                      const layerParams = params.filter(p => p.layer === layer)
+                      const headers = { H: { bg: '#fff3e0', color: '#e65100', label: '🕐 小时层规则（H）' }, D: { bg: '#e8eaf6', color: '#283593', label: '📅 日层规则（D）' }, W: { bg: '#e8f5e9', color: '#2e7d32', label: '📆 周层规则（W）' } }
+                      const h = headers[layer]
+                      return [
+                        <tr key={`hdr-${layer}`} style={{ background: h.bg }}>
+                          <td colSpan={3} style={{ padding: '4px 10px', fontWeight: 700, color: h.color, fontSize: 10 }}>{h.label}</td>
+                        </tr>,
+                        ...layerParams.map(p => {
+                          const idx = params.findIndex(x => x.name === p.name)
+                          const isDirty = p.val !== defaultParams[idx]?.val
+                          return (
+                            <tr key={p.name} style={{ borderBottom: '1px solid #f3f4f6', background: isDirty ? '#fffde7' : '' }}>
+                              <td style={{ padding: '5px 10px', color: '#374151', whiteSpace: 'nowrap' }}>
+                                {isDirty && <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', marginRight: 6, verticalAlign: 'middle' }} />}
+                                {p.name}
+                              </td>
+                              <td style={{ padding: '4px 8px' }}>
+                                <input
+                                  value={p.val}
+                                  onChange={e => setParams(prev => prev.map((x, i) => i === idx ? { ...x, val: e.target.value } : x))}
+                                  style={{
+                                    width: '100%', minWidth: 120, border: `1.5px solid ${isDirty ? '#f59e0b' : '#e5e7eb'}`,
+                                    borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 700,
+                                    color: isDirty ? '#92400e' : '#283593', background: isDirty ? '#fffde7' : '#f9fafb',
+                                    outline: 'none', boxSizing: 'border-box',
+                                  }}
+                                  onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                                  onBlur={e => (e.target.style.borderColor = isDirty ? '#f59e0b' : '#e5e7eb')}
+                                />
+                              </td>
+                              <td style={{ padding: '5px 10px', color: '#9ca3af', fontSize: 10 }}>{p.desc}</td>
+                            </tr>
+                          )
+                        })
+                      ]
                     })}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            {/* Section 2: threshold params */}
-            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', overflow: 'hidden' }}>
-              <div style={{ padding: '10px 16px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #f0f0f0' }}>⚙️ 阈值参数配置</div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
-                      {['参数名', '当前值', '说明'].map(h => (
-                        <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* H layer header */}
-                    <tr style={{ background: '#fff3e0' }}>
-                      <td colSpan={3} style={{ padding: '4px 10px', fontWeight: 700, color: '#e65100', fontSize: 10 }}>🕐 小时层规则（H）</td>
-                    </tr>
-                    {([
-                      ['R1-A 动态阈值窗口', '28天', '计算同段均值±2σ所用历史天数'],
-                      ['R1-A 触发：ROI完成率上限', '< 80%', '同时满足零成交+零加购才触发暂停'],
-                      ['R1-B 预估亏损判断基准', '昨日全天花费', '全天收益投影低于此值触发'],
-                      ['R1-B ROI上调幅度', '×1.15（+15%）', '净目标投产比自动上调比例'],
-                      ['R1-B 剩余预算收缩', '×0.80', '当日已花费+剩余×0.8=新预算'],
-                      ['R2-A ROI完成率触发线', '< 60%', '累计成交额÷花费÷目标ROI'],
-                      ['R2-A ROI上调幅度', '×1.18（+18%）', '完成率过低时强力收紧出价'],
-                      ['R2-A 剩余预算收缩', '×0.70', '剩余预算大幅削减'],
-                      ['R2-B 止损ROI', '1 ÷ Gross毛利率', '各计划独立计算；超盈亏平衡即触发'],
-                      ['R2-B ROI目标', '止损ROI × 1.10', '缓冲10%防止频繁触发'],
-                      ['R2-B 剩余预算收缩', '×0.60', '红区止损最强预算压力'],
-                      ['R2-C ROI上调幅度', '×1.10（+10%）', '黄区+全店余量不足时联动收紧'],
-                      ['R2-C 剩余预算收缩', '×0.80', '配合ROI收紧的预算压力'],
-                      ['R3 ROI完成率触发线', '≥ 130%', '绿区且ROI明显超目标才追量'],
-                      ['R3 预算追加幅度', '+15~20%', '按过去3小时均花费×剩余小时数×15%'],
-                      ['R3 置信度要求', '高置信度', '有花费≥9小时且预测误差<20%'],
-                      ['R4 CTR动态阈值', '28日均值 − 2σ', '低于此值记录预警，不操作出价'],
-                    ] as [string, string, string][]).map(([name, val, desc]) => (
-                      <tr key={name} style={{ borderBottom: '1px solid #f3f4f6' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                        <td style={{ padding: '5px 10px', color: '#374151' }}>{name}</td>
-                        <td style={{ padding: '5px 10px', fontWeight: 700, color: '#283593' }}>{val}</td>
-                        <td style={{ padding: '5px 10px', color: '#9ca3af' }}>{desc}</td>
-                      </tr>
-                    ))}
-                    {/* D layer header */}
-                    <tr style={{ background: '#e8eaf6' }}>
-                      <td colSpan={3} style={{ padding: '4px 10px', fontWeight: 700, color: '#283593', fontSize: 10 }}>📅 日层规则（D）</td>
-                    </tr>
-                    {([
-                      ['DT1 费比目标线', 'Gross毛利率 − 10%', '超过此线触发轻度收紧'],
-                      ['DT1 ROI上调幅度', '×1.08（+8%）', '超目标费比时轻度收紧出价'],
-                      ['DT1 次日预算压缩', '×0.90', '配合ROI收紧的次日预算'],
-                      ['DT2 加购率触发倍数', '品类均值 × 1.5', '加购率超此倍数触发保护'],
-                      ['DT2 保护天数', '品类延迟中位数', '历史加购→成交延迟P50天数'],
-                      ['DT3 预算耗尽预测时点', '< 18:00', '晚高峰前耗尽才触发预算追加'],
-                      ['DT3 次日预算追加', '×1.20（+20%）', '需绿区且中/高置信度才执行'],
-                      ['DT4 零转化花费门槛', '> 200元', '低于此值的零转化不处理'],
-                      ['DT4 最低投放天数', '≥ 3天', '新计划前3天豁免DT4'],
-                      ['DT5 冷启动期计算', '品类历史P80天数', '各类目独立计算，非固定天数'],
-                      ['DT5 费比容忍上限', 'Gross毛利率 × 1.20', '冷启动期允许费比超目标至此'],
-                    ] as [string, string, string][]).map(([name, val, desc]) => (
-                      <tr key={name} style={{ borderBottom: '1px solid #f3f4f6' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                        <td style={{ padding: '5px 10px', color: '#374151' }}>{name}</td>
-                        <td style={{ padding: '5px 10px', fontWeight: 700, color: '#283593' }}>{val}</td>
-                        <td style={{ padding: '5px 10px', color: '#9ca3af' }}>{desc}</td>
-                      </tr>
-                    ))}
-                    {/* W layer header */}
-                    <tr style={{ background: '#e8f5e9' }}>
-                      <td colSpan={3} style={{ padding: '4px 10px', fontWeight: 700, color: '#2e7d32', fontSize: 10 }}>📆 周层规则（W）</td>
-                    </tr>
-                    {([
-                      ['WK1 全店周毛利目标', '10%', '顶层约束；旺季+2%，淡季-2%'],
-                      ['WK1 超额松绑幅度', 'ROI下调5%', '超额>+3%才松绑黄区B类计划'],
-                      ['WK1 不达标-红区操作', 'ROI+15% + 预算×0.70', '红区计划本周收紧'],
-                      ['WK1 不达标-黄区操作', 'ROI+8% + 预算×0.85', '黄区计划本周轻压'],
-                      ['WK2 加购率触发倍数', '品类均值 × 1.30', '高加购+低即时ROI判定高潜力'],
-                      ['WK2 预算追加幅度', '+30%', '本周每日预算大幅追加'],
-                      ['WK2 ROI下调幅度', '×0.92（-8%）', '降低ROI目标放量捕获潜在转化'],
-                      ['WK3 红区连续周数', '≥ 3周', '连续三周费比超盈亏平衡才触发'],
-                      ['WK3 加购量触发线', '品类均值 × 0.30', '加购极低说明流量/商品双重问题'],
-                      ['WK3 最低预算维持', '×0.30', '保留最低消耗积累数据等待人工决策'],
-                      ['WK4 利用率过低触发线', '< 60%', '建议ROI下调5~10%提升竞争力'],
-                      ['WK4 早耗尽触发时点', '12:00前耗尽', '建议预算×1.50'],
-                      ['WK5 增量ROI曲线数据量', '≥ 12周', '不足4周时退化为三区间规则'],
-                      ['WK5 模型拟合质量要求', 'R² ≥ 0.50', '低于0.5降权结合规则方法'],
-                    ] as [string, string, string][]).map(([name, val, desc]) => (
-                      <tr key={name} style={{ borderBottom: '1px solid #f3f4f6' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                        <td style={{ padding: '5px 10px', color: '#374151' }}>{name}</td>
-                        <td style={{ padding: '5px 10px', fontWeight: 700, color: '#283593' }}>{val}</td>
-                        <td style={{ padding: '5px 10px', color: '#9ca3af' }}>{desc}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Floating save bar */}
+            {dirtyCount > 0 && (
+              <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20, background: 'rgba(255,255,255,.95)', backdropFilter: 'blur(8px)', borderTop: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: '#92400e', fontWeight: 600 }}>
+                  ⚠️ 已修改 {dirtyCount} 项参数，未保存
+                </span>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={resetParams} style={{ padding: '6px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>
+                    重置默认
+                  </button>
+                  <button onClick={saveParams} style={{ padding: '6px 20px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#283593,#1565c0)', color: '#fff', cursor: 'pointer' }}>
+                    ✓ 保存参数
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

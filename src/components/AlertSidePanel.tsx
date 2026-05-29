@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { plans } from '../lib/mockData'
 
 // Dynamically compute alerts from plans (matching HTML _collectAlerts logic)
@@ -116,6 +116,56 @@ export function AlertSidePanel({ onClose }: Props) {
   const allAlerts = collectAlerts()
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set())
+  const [showNotifyModal, setShowNotifyModal] = useState(false)
+  const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('feishu_webhook') || '')
+  const [notifyStatus, setNotifyStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
+  const webhookRef = useRef<HTMLInputElement>(null)
+
+  async function sendToFeishu() {
+    const url = webhookRef.current?.value.trim() || webhookUrl
+    if (!url) return
+    localStorage.setItem('feishu_webhook', url)
+    setWebhookUrl(url)
+    setNotifyStatus('sending')
+
+    const activeAlerts = allAlerts.filter(a => !dismissed.has(a.id))
+    const urgent = activeAlerts.filter(a => a.level === 'urgent')
+    const warning = activeAlerts.filter(a => a.level === 'warning')
+    const opp = activeAlerts.filter(a => a.level === 'opportunity')
+
+    const now = new Date()
+    const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`
+
+    let text = `【全站推广告警推送】${timeStr}\n`
+    text += `📊 汇总：${urgent.length}条紧急 · ${warning.length}条预警 · ${opp.length}条机会\n\n`
+    if (urgent.length > 0) {
+      text += `🔴 紧急待确认（${urgent.length}条）\n`
+      urgent.forEach(a => { text += `• ${a.plan} [${a.rule}]：${a.title}\n` })
+      text += '\n'
+    }
+    if (warning.length > 0) {
+      text += `🟡 预警关注（${warning.length}条）\n`
+      warning.forEach(a => { text += `• ${a.plan} [${a.rule}]：${a.title}\n` })
+      text += '\n'
+    }
+    if (opp.length > 0) {
+      text += `🚀 追量机会（${opp.length}条）\n`
+      opp.forEach(a => { text += `• ${a.plan} [${a.rule}]：${a.title}\n` })
+    }
+
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg_type: 'text', content: { text } }),
+      })
+      setNotifyStatus('ok')
+      setTimeout(() => setNotifyStatus('idle'), 3000)
+    } catch {
+      setNotifyStatus('err')
+      setTimeout(() => setNotifyStatus('idle'), 3000)
+    }
+  }
 
   const active = allAlerts.filter(a => !dismissed.has(a.id))
   const urgent = active.filter(a => a.level === 'urgent')
@@ -201,7 +251,14 @@ export function AlertSidePanel({ onClose }: Props) {
               {badgeCount > 0 && <span style={{ background: '#fff', color: '#c62828', fontWeight: 700, borderRadius: 10, padding: '0 6px', marginLeft: 8, fontSize: 10 }}>{badgeCount}</span>}
             </div>
           </div>
-          <button onClick={onClose} style={{ color: 'rgba(255,255,255,.8)', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={() => setShowNotifyModal(true)}
+              style={{ padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 700, background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.35)', color: '#fff', cursor: 'pointer' }}>
+              {notifyStatus === 'ok' ? '✅ 已推送' : notifyStatus === 'sending' ? '推送中…' : '⚡ 推送飞书'}
+            </button>
+            <button onClick={onClose} style={{ color: 'rgba(255,255,255,.8)', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          </div>
         </div>
 
         {/* Body */}
@@ -233,6 +290,46 @@ export function AlertSidePanel({ onClose }: Props) {
           )}
         </div>
       </div>
+      {showNotifyModal && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.4)' }} onClick={() => setShowNotifyModal(false)} />
+          <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,.18)', width: 380, pointerEvents: 'auto', overflow: 'hidden' }}>
+              <div style={{ background: 'linear-gradient(135deg,#c62828,#e53935)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>⚡ 推送飞书机器人</span>
+                <button onClick={() => setShowNotifyModal(false)} style={{ color: 'rgba(255,255,255,.8)', background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+              </div>
+              <div style={{ padding: 20 }}>
+                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>飞书机器人 Webhook URL</div>
+                <input
+                  ref={webhookRef}
+                  defaultValue={webhookUrl}
+                  placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+                  style={{ width: '100%', border: '1.5px solid #d1d5db', borderRadius: 8, padding: '8px 10px', fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
+                  onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                  onBlur={e => (e.target.style.borderColor = '#d1d5db')}
+                />
+                <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>
+                  飞书群内添加机器人 → 自定义机器人 → 复制Webhook地址
+                </div>
+                <div style={{ marginTop: 14, padding: '10px 12px', background: '#fff8e1', borderRadius: 8, fontSize: 10, color: '#795548' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>📋 将推送内容预览</div>
+                  <div>【全站推广告警】{active.filter(a => a.level === 'urgent').length}条紧急 · {active.filter(a => a.level === 'warning').length}条预警 · {active.filter(a => a.level === 'opportunity').length}条机会</div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                  <button onClick={() => setShowNotifyModal(false)} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>取消</button>
+                  <button
+                    onClick={async () => { await sendToFeishu(); setShowNotifyModal(false) }}
+                    disabled={notifyStatus === 'sending'}
+                    style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#c62828,#e53935)', color: '#fff', cursor: 'pointer' }}>
+                    {notifyStatus === 'sending' ? '推送中…' : '立即推送'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   )
 }
