@@ -3,6 +3,7 @@ import { RULE_DEFS, PLAN_HIST_LOG, plans as defaultPlans } from '../lib/mockData
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Line, ComposedChart, Bar } from 'recharts'
 
 import type { PlanData } from '../lib/mockData'
+import { loadJSON, saveJSON } from '../lib/persist'
 
 interface Props {
   onClose: () => void
@@ -84,52 +85,89 @@ function computeEffects(execs: ReturnType<typeof collectExecs>) {
   return eff
 }
 
-// ─── Backtest simulation ────────────────────────────────
-function runBacktest(startDate: string, endDate: string, _gross: number, _weeklyTarget: number, selectedRules: Set<string>, planNames: string[] = defaultPlans.map(p => p.name)) {
-  // Generate 30 dates
+// ─── 规则分类 & 影响权重（模拟模型,确定性） ──────────────
+// 控本类:降低费比;放量类:费比略升但 ROI 中性;其余:监控/记录类,≈无费比影响
+const SCALE_UP = new Set(['R3', 'DT3', 'WK2'])
+const COST_CUT = new Set(['R1-A', 'R1-B', 'R2-A', 'R2-B', 'R2-C', 'DT1', 'DT4', 'WK1', 'WK3'])
+// 每条规则的费比影响权重（pp/天,正=降费比/控本,负=抬费比/放量,0=中性）
+const RULE_WEIGHT: Record<string, number> = {
+  'R1-A': 1.2, 'R1-B': 0.9, 'R2-A': 1.0, 'R2-B': 1.4, 'R2-C': 0.7,
+  'DT1': 0.6, 'DT4': 0.5, 'WK1': 0.8, 'WK3': 0.6,
+  'R3': -0.4, 'DT3': -0.3, 'WK2': -0.5,
+  // R4 / DT2 / DT5 / WK4 / WK5 等监控类默认 0
+}
+
+// ─── Backtest simulation（模拟模型,非真实历史） ──────────
+function runBacktest(
+  startDate: string, endDate: string, gross: number, weeklyTarget: number,
+  selectedRules: Set<string>, planNames: string[] = defaultPlans.map(p => p.name),
+  plansData: { spend: number }[] = [],
+) {
+  // 生成日期序列
   const dates: string[] = []
   const start = new Date(startDate)
   const end = new Date(endDate)
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     dates.push(`${d.getMonth() + 1}/${d.getDate()}`)
   }
+  if (dates.length === 0) return null  // 开始>结束 → 无效
 
-  // For each date simulate febi with/without rules
+  // 按所选规则聚合费比影响（pp/天）,带衰减与上下限
+  let netImpactPP = 0
+  selectedRules.forEach(k => { netImpactPP += (RULE_WEIGHT[k] || 0) })
+  const improvePP = Math.max(-3, Math.min(6, netImpactPP * 0.6))  // 净改善上限6pp,可为负
+  const improve = improvePP / 100
+
+  // 基线费比锚定到 Gross:无规则时略高于盈亏平衡线(持续小幅亏损)
+  const baseFebi = gross + 0.03
+  // 周毛利目标 → 利润目标费比线(Gross − 周目标)
+  const targetFebi = Math.max(0.03, gross - weeklyTarget)
+
   const trendData = dates.map((date, i) => {
-    const base = 0.22 + Math.sin(i * 0.4) * 0.03
-    const withRule = base - (selectedRules.size > 0 ? 0.015 + Math.sin(i * 0.3) * 0.005 : 0)
-    return { date, withRule: +withRule.toFixed(3), noRule: +base.toFixed(3) }
+    const wave = Math.sin(i * 0.4) * 0.012
+    const noRule = +(baseFebi + wave).toFixed(4)
+    const ramp = Math.min(1, (i + 1) / Math.min(7, dates.length))  // 规则数日内逐步生效
+    const withRule = +(noRule - improve * ramp).toFixed(4)
+    return { date, withRule, noRule, target: +targetFebi.toFixed(4) }
   })
 
-  // Build detail rows — deterministic: same (dates, rules, plans) → same output
+  // 明细行 — 确定性 seeded,行数随所选规则数与回测天数缩放(上限40)
   const ruleKeys = [...selectedRules].sort()
-  // Seed from inputs so identical backtest configs reproduce identical results
   let seed = (startDate + endDate + ruleKeys.join() + planNames.join()).split('')
     .reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 7)
   const rng = () => { seed = (Math.imul(1664525, seed) + 1013904223) | 0; return (seed >>> 0) / 4294967296 }
   const detailRows: { date: string; plan: string; rule: string; rDef: typeof RULE_DEFS[0]; action: string; estRoiDelta: number; estFebiDelta: number; auto: boolean }[] = []
-  dates.slice(0, 10).forEach((date, di) => {
-    if (ruleKeys.length === 0) return
-    const plan = planNames[Math.floor(rng() * planNames.length)]
-    const rKey = ruleKeys[(di + Math.floor(rng() * ruleKeys.length)) % ruleKeys.length]
+  const rowCount = ruleKeys.length === 0 ? 0 : Math.min(40, Math.max(ruleKeys.length, Math.round(dates.length / 3)))
+  for (let n = 0; n < rowCount; n++) {
+    const rKey = ruleKeys[n % ruleKeys.length]
     const rDef = RULE_DEFS.find(r => r.key === rKey)
-    if (!rDef) return
-    const scUp = new Set(['R3', 'DT3', 'WK2'])
+    if (!rDef) continue
+    const w = RULE_WEIGHT[rKey] || 0
+    const date = dates[Math.floor(rng() * dates.length)]
+    const plan = planNames[Math.floor(rng() * planNames.length)] || '—'
     detailRows.push({
       date, plan, rule: rKey, rDef, action: rDef.action,
-      estRoiDelta: scUp.has(rKey) ? +(rng() * 0.5).toFixed(2) : +(-(rng() * 0.3)).toFixed(2),
-      estFebiDelta: scUp.has(rKey) ? +(-(rng() * 2)).toFixed(1) : +(-(rng() * 3)).toFixed(1),
+      // 控本类提升 ROI;放量类 ROI 中性偏正
+      estRoiDelta: +(Math.abs(w) * 0.3 + rng() * 0.25).toFixed(2),
+      // 费比变化与规则权重挂钩:控本类降费比(负),放量类抬费比(正)
+      estFebiDelta: +(-(w * 0.6) + (rng() - 0.5) * 0.3).toFixed(1),
       auto: rDef.auto,
     })
-  })
+  }
 
   const autoCount = detailRows.filter(r => r.auto).length
   const totalTriggers = detailRows.length
   const avgFebiImprove = trendData.reduce((s, d) => s + (d.noRule - d.withRule), 0) / trendData.length
-  const avgRoiImprove = avgFebiImprove * 0.8
-  const budgetSaved = avgFebiImprove * 50000
+  // ROI 改善由费比改善反推:ROI ≈ 1/费比
+  const roiNo = 1 / baseFebi
+  const roiWith = 1 / Math.max(0.03, baseFebi - avgFebiImprove)
+  const avgRoiImprove = roiWith - roiNo
+  // 预算优化额:基于真实计划日花费反推日营收 × 费比改善 × 天数
+  const totalSpend = plansData.reduce((s, p) => s + p.spend, 0)
+  const dailyRevenue = baseFebi > 0 ? totalSpend / baseFebi : 0
+  const budgetSaved = dailyRevenue * avgFebiImprove * dates.length
 
-  return { trendData, detailRows, autoCount, totalTriggers, avgFebiImprove, avgRoiImprove, budgetSaved }
+  return { trendData, detailRows, autoCount, totalTriggers, avgFebiImprove, avgRoiImprove, budgetSaved, days: dates.length, improvePP }
 }
 
 export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
@@ -176,17 +214,40 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
     { layer: 'W', name: 'WK4 利用率过低触发线', val: '< 60%', desc: '建议ROI下调5~10%提升竞争力' },
     { layer: 'W', name: 'WK5 模型拟合质量要求', val: 'R² ≥ 0.50', desc: '低于0.5降权结合规则方法' },
   ]
-  const [params, setParams] = useState<ThresholdRow[]>(defaultParams)
-  const [savedParams, setSavedParams] = useState<ThresholdRow[]>(defaultParams)
-  const [ruleEnabled, setRuleEnabled] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(RULE_DEFS.map(r => [r.key, true]))
+  const allEnabled = () => Object.fromEntries(RULE_DEFS.map(r => [r.key, true]))
+  // 持久化:参数值(仅 val,按 name 索引) + 规则启停
+  const savedValMap = loadJSON<Record<string, string>>('ruleengine.params', {})
+  const savedEnabledInit = loadJSON<Record<string, boolean>>('ruleengine.enabled', allEnabled())
+  const [params, setParams] = useState<ThresholdRow[]>(
+    () => defaultParams.map(p => ({ ...p, val: savedValMap[p.name] ?? p.val }))
   )
+  const [savedParams, setSavedParams] = useState<ThresholdRow[]>(
+    () => defaultParams.map(p => ({ ...p, val: savedValMap[p.name] ?? p.val }))
+  )
+  const [ruleEnabled, setRuleEnabled] = useState<Record<string, boolean>>(() => ({ ...allEnabled(), ...savedEnabledInit }))
+  const [savedEnabled, setSavedEnabled] = useState<Record<string, boolean>>(() => ({ ...allEnabled(), ...savedEnabledInit }))
+  const [saveFlash, setSaveFlash] = useState(false)
 
-  const dirtyCount = params.filter((p, i) => p.val !== savedParams[i]?.val).length +
-    RULE_DEFS.filter(r => !ruleEnabled[r.key]).length
+  // 参数改动 与 规则启停改动 分开计数(相对"已保存"状态,而非默认值)
+  const paramDirty = params.filter((p, i) => p.val !== savedParams[i]?.val).length
+  const enabledDirty = RULE_DEFS.filter(r => (ruleEnabled[r.key] !== false) !== (savedEnabled[r.key] !== false)).length
+  const dirtyCount = paramDirty + enabledDirty
+  const disabledCount = RULE_DEFS.filter(r => ruleEnabled[r.key] === false).length
 
-  function saveParams() { setSavedParams([...params]) }
-  function resetParams() { setParams([...defaultParams]); setSavedParams([...defaultParams]); setRuleEnabled(Object.fromEntries(RULE_DEFS.map(r => [r.key, true]))) }
+  function saveParams() {
+    setSavedParams([...params])
+    setSavedEnabled({ ...ruleEnabled })
+    saveJSON('ruleengine.params', Object.fromEntries(params.map(p => [p.name, p.val])))
+    saveJSON('ruleengine.enabled', ruleEnabled)
+    setSaveFlash(true)
+    setTimeout(() => setSaveFlash(false), 1800)
+  }
+  function resetParams() {
+    setParams([...defaultParams]); setSavedParams([...defaultParams])
+    setRuleEnabled(allEnabled()); setSavedEnabled(allEnabled())
+    saveJSON('ruleengine.params', undefined)
+    saveJSON('ruleengine.enabled', undefined)
+  }
 
   // Backtest state
   const [btStart, setBtStart] = useState('2026-04-29')
@@ -196,6 +257,17 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
   const [btRules, setBtRules] = useState<Set<string>>(new Set(RULE_DEFS.map(r => r.key)))
   const [btResult, setBtResult] = useState<ReturnType<typeof runBacktest> | null>(null)
 
+  // 回测有效性:已启用且勾选的规则 + 日期合法
+  const effectiveBtRules = new Set([...btRules].filter(k => ruleEnabled[k] !== false))
+  const dateValid = new Date(btStart) <= new Date(btEnd)
+  const btError = !dateValid ? '开始日期需早于或等于结束日期'
+    : effectiveBtRules.size === 0 ? '请至少选择一条已启用的规则'
+    : ''
+  function handleRunBacktest() {
+    if (btError) return
+    setBtResult(runBacktest(btStart, btEnd, btGross / 100, btWeekly / 100, effectiveBtRules, plans.map(p => p.name), plans))
+  }
+
   const execs = useMemo(() => collectExecs(), [])
   const eff = useMemo(() => computeEffects(execs), [execs])
 
@@ -204,8 +276,8 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
   const autoRate = totalTriggers > 0 ? Math.round(execs.filter(e => e.rDef.auto).length / totalTriggers * 100) : 0
   const activePlans = new Set(execs.map(e => e.plan)).size
 
-  const scaleUp = new Set(['R3', 'DT3', 'WK2'])
-  const costCut = new Set(['R1-A', 'R1-B', 'R2-A', 'R2-B', 'R2-C', 'DT1', 'DT4', 'WK1', 'WK3'])
+  const scaleUp = SCALE_UP
+  const costCut = COST_CUT
 
   // Log filtering
   const planNames = [...new Set(execs.map(e => e.plan))]
@@ -304,7 +376,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                   : scaleUp.has(rd.key) ? (e.avgRoiDelta >= -0.1 ? 'pos' : 'neg')
                   : e.avgRoiDelta < 0 ? 'pos' : e.avgRoiDelta > 0.3 ? 'neg' : 'neu'
                 const roiEffTxt = e.avgRoiDelta == null ? '暂无效果数据'
-                  : `执行后3日均ROI ${e.avgRoiDelta > 0 ? '↑' : '↓'}${Math.abs(e.avgRoiDelta)} | 费比${e.avgFebiDelta != null ? (e.avgFebiDelta > 0 ? '↑' : '↓') + Math.abs(e.avgFebiDelta) : '—'}%`
+                  : `估算ROI ${e.avgRoiDelta > 0 ? '↑' : '↓'}${Math.abs(e.avgRoiDelta)} | 费比${e.avgFebiDelta != null ? (e.avgFebiDelta > 0 ? '↑' : '↓') + Math.abs(e.avgFebiDelta) : '—'}%`
                 const effBg = effCls === 'pos' ? '#e8f5e9' : effCls === 'neg' ? '#ffebee' : '#f5f5f5'
                 const effColor = effCls === 'pos' ? '#2e7d32' : effCls === 'neg' ? '#c62828' : '#666'
                 return (
@@ -396,15 +468,21 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
               <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
-                    {['时间', '计划', '规则', '层级', '触发条件', '执行动作', '状态', '次日ROI变化'].map(h => (
+                    {['时间', '计划', '规则', '层级', '触发条件', '执行动作', '状态'].map(h => (
                       <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
+                  {filteredLog.length === 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: 12 }}>
+                        没有符合筛选条件的执行记录
+                      </td>
+                    </tr>
+                  )}
                   {filteredLog.map((r, i) => {
                     const ls = layerStyle(r.layer)
-                    // no raw ROI data in hist log
                     const ok = !r.pending
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}
@@ -423,9 +501,6 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                         <td style={{ padding: '6px 8px' }}>
                           <span style={{ fontWeight: 700, color: ok ? '#2e7d32' : '#f57f17' }}>{ok ? '✅ 已执行' : '⏳ 待确认'}</span>
                         </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <span style={{ color: '#9ca3af' }}>—</span>
-                        </td>
                       </tr>
                     )
                   })}
@@ -438,8 +513,11 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
         {/* ══ 效果评估 ══ */}
         {tab === 'eval' && (
           <div>
-            <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
-              基于30天历史执行数据，对比触发日前3日均值 vs 执行后3日均值，评估各规则实际效果。
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 4 }}>模拟估算</span>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                当前为模型估算值（演示用）。接入真实执行数据后，将改为对比触发日前 3 日均值 vs 执行后 3 日均值。
+              </span>
             </div>
             {/* chart */}
             <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', padding: 16, marginBottom: 16 }}>
@@ -504,7 +582,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
 
         {/* ══ 规则参数（可编辑） ══ */}
         {tab === 'config' && (
-          <div style={{ paddingBottom: dirtyCount > 0 ? 64 : 0 }}>
+          <div style={{ paddingBottom: (dirtyCount > 0 || saveFlash) ? 64 : 0 }}>
             {/* Section 1: rule enable/disable */}
             <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', marginBottom: 16, overflow: 'hidden' }}>
               <div style={{ padding: '10px 16px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -592,19 +670,30 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
             </div>
 
             {/* Floating save bar */}
-            {dirtyCount > 0 && (
+            {(dirtyCount > 0 || saveFlash) && (
               <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20, background: 'rgba(255,255,255,.95)', backdropFilter: 'blur(8px)', borderTop: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12, color: '#92400e', fontWeight: 600 }}>
-                  ⚠️ 已修改 {dirtyCount} 项参数，未保存
-                </span>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={resetParams} style={{ padding: '6px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>
-                    重置默认
-                  </button>
-                  <button onClick={saveParams} style={{ padding: '6px 20px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#283593,#1565c0)', color: '#fff', cursor: 'pointer' }}>
-                    ✓ 保存参数
-                  </button>
-                </div>
+                {saveFlash ? (
+                  <span style={{ fontSize: 12, color: '#2e7d32', fontWeight: 700 }}>
+                    ✓ 已保存到本地（刷新后保留）
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 12, color: '#92400e', fontWeight: 600 }}>
+                    ⚠️ 未保存：
+                    {paramDirty > 0 && `${paramDirty} 项参数修改`}
+                    {paramDirty > 0 && enabledDirty > 0 && '、'}
+                    {enabledDirty > 0 && `${enabledDirty} 项规则启停变更`}
+                  </span>
+                )}
+                {!saveFlash && (
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={resetParams} style={{ padding: '6px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>
+                      重置默认
+                    </button>
+                    <button onClick={saveParams} style={{ padding: '6px 20px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#283593,#1565c0)', color: '#fff', cursor: 'pointer' }}>
+                      ✓ 保存配置
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -662,47 +751,62 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
               {/* H layer */}
               <div style={{ fontSize: 10, fontWeight: 700, color: '#e65100', background: '#fff3e0', padding: '3px 6px', borderRadius: 4, marginBottom: 4 }}>🕐 小时层</div>
               {RULE_DEFS.filter(r => r.layer === 'H').map(r => (
-                <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
-                  <input type="checkbox" checked={btRules.has(r.key)} onChange={e => {
+                <label key={r.key} title={ruleEnabled[r.key] === false ? '该规则已在「规则参数」中停用' : undefined}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: ruleEnabled[r.key] === false ? 'not-allowed' : 'pointer', marginBottom: 4, opacity: ruleEnabled[r.key] === false ? 0.4 : 1 }}>
+                  <input type="checkbox" disabled={ruleEnabled[r.key] === false} checked={ruleEnabled[r.key] !== false && btRules.has(r.key)} onChange={e => {
                     const s = new Set(btRules); e.target.checked ? s.add(r.key) : s.delete(r.key); setBtRules(s)
                   }} style={{ margin: 0 }} />
                   <span>{r.icon}</span>
                   <span style={{ color: r.color, fontWeight: 700 }}>{r.key}</span>
                   <span style={{ color: '#6b7280' }}>{r.label}</span>
+                  {ruleEnabled[r.key] === false && <span style={{ marginLeft: 'auto', fontSize: 9, color: '#9ca3af' }}>已停用</span>}
                 </label>
               ))}
 
               {/* D layer */}
               <div style={{ fontSize: 10, fontWeight: 700, color: '#283593', background: '#e8eaf6', padding: '3px 6px', borderRadius: 4, marginBottom: 4, marginTop: 8 }}>📅 日层</div>
               {RULE_DEFS.filter(r => r.layer === 'D').map(r => (
-                <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
-                  <input type="checkbox" checked={btRules.has(r.key)} onChange={e => {
+                <label key={r.key} title={ruleEnabled[r.key] === false ? '该规则已在「规则参数」中停用' : undefined}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: ruleEnabled[r.key] === false ? 'not-allowed' : 'pointer', marginBottom: 4, opacity: ruleEnabled[r.key] === false ? 0.4 : 1 }}>
+                  <input type="checkbox" disabled={ruleEnabled[r.key] === false} checked={ruleEnabled[r.key] !== false && btRules.has(r.key)} onChange={e => {
                     const s = new Set(btRules); e.target.checked ? s.add(r.key) : s.delete(r.key); setBtRules(s)
                   }} style={{ margin: 0 }} />
                   <span>{r.icon}</span>
                   <span style={{ color: r.color, fontWeight: 700 }}>{r.key}</span>
                   <span style={{ color: '#6b7280' }}>{r.label}</span>
+                  {ruleEnabled[r.key] === false && <span style={{ marginLeft: 'auto', fontSize: 9, color: '#9ca3af' }}>已停用</span>}
                 </label>
               ))}
 
               {/* W layer */}
               <div style={{ fontSize: 10, fontWeight: 700, color: '#2e7d32', background: '#e8f5e9', padding: '3px 6px', borderRadius: 4, marginBottom: 4, marginTop: 8 }}>📆 周层</div>
               {RULE_DEFS.filter(r => r.layer === 'W').map(r => (
-                <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
-                  <input type="checkbox" checked={btRules.has(r.key)} onChange={e => {
+                <label key={r.key} title={ruleEnabled[r.key] === false ? '该规则已在「规则参数」中停用' : undefined}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: ruleEnabled[r.key] === false ? 'not-allowed' : 'pointer', marginBottom: 4, opacity: ruleEnabled[r.key] === false ? 0.4 : 1 }}>
+                  <input type="checkbox" disabled={ruleEnabled[r.key] === false} checked={ruleEnabled[r.key] !== false && btRules.has(r.key)} onChange={e => {
                     const s = new Set(btRules); e.target.checked ? s.add(r.key) : s.delete(r.key); setBtRules(s)
                   }} style={{ margin: 0 }} />
                   <span>{r.icon}</span>
                   <span style={{ color: r.color, fontWeight: 700 }}>{r.key}</span>
                   <span style={{ color: '#6b7280' }}>{r.label}</span>
+                  {ruleEnabled[r.key] === false && <span style={{ marginLeft: 'auto', fontSize: 9, color: '#9ca3af' }}>已停用</span>}
                 </label>
               ))}
 
+              {btError && (
+                <div style={{ marginTop: 12, padding: '6px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 10.5, color: '#c62828', fontWeight: 600 }}>
+                  ⚠️ {btError}
+                </div>
+              )}
               <button
-                onClick={() => setBtResult(runBacktest(btStart, btEnd, btGross / 100, btWeekly / 100, btRules, plans.map(p => p.name)))}
-                style={{ width: '100%', padding: '9px', marginTop: 14, borderRadius: 8, background: '#3730a3', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', border: 'none' }}>
+                onClick={handleRunBacktest}
+                disabled={!!btError}
+                style={{ width: '100%', padding: '9px', marginTop: btError ? 8 : 14, borderRadius: 8, background: btError ? '#cbd5e1' : '#3730a3', color: '#fff', fontWeight: 700, fontSize: 12, cursor: btError ? 'not-allowed' : 'pointer', border: 'none' }}>
                 ▶ 运行回测
               </button>
+              <div style={{ marginTop: 8, fontSize: 9, color: '#9ca3af', lineHeight: 1.5 }}>
+                已启用并选中 <strong style={{ color: '#475569' }}>{effectiveBtRules.size}</strong> 条规则参与回测{disabledCount > 0 ? `（${disabledCount} 条在规则参数中已停用）` : ''}
+              </div>
             </div>
 
             {/* Right result panel */}
@@ -715,14 +819,19 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                 </div>
               ) : (
                 <div>
+                  {/* Summary */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 11, color: '#6b7280', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 4 }}>模拟估算</span>
+                    回测窗口 <strong style={{ color: '#374151' }}>{btResult.days}</strong> 天 · 参与规则 <strong style={{ color: '#374151' }}>{effectiveBtRules.size}</strong> 条 · 净费比影响 <strong style={{ color: btResult.improvePP >= 0 ? '#2e7d32' : '#c62828' }}>{btResult.improvePP >= 0 ? '−' : '+'}{Math.abs(btResult.improvePP).toFixed(1)}pp/天</strong>
+                  </div>
                   {/* KPI cards */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>
                     {([
-                      ['预计ROI改善', btResult.avgRoiImprove > 0 ? `+${btResult.avgRoiImprove.toFixed(3)}` : btResult.avgRoiImprove.toFixed(3), btResult.avgRoiImprove >= 0 ? '#2e7d32' : '#c62828'],
-                      ['预计费比改善', btResult.avgFebiImprove > 0 ? `-${(btResult.avgFebiImprove * 100).toFixed(1)}%` : `+${(Math.abs(btResult.avgFebiImprove) * 100).toFixed(1)}%`, btResult.avgFebiImprove >= 0 ? '#2e7d32' : '#c62828'],
+                      ['预计ROI改善', btResult.avgRoiImprove > 0 ? `+${btResult.avgRoiImprove.toFixed(2)}` : btResult.avgRoiImprove.toFixed(2), btResult.avgRoiImprove >= 0 ? '#2e7d32' : '#c62828'],
+                      ['预计费比改善', btResult.avgFebiImprove > 0 ? `-${(btResult.avgFebiImprove * 100).toFixed(1)}pp` : `+${(Math.abs(btResult.avgFebiImprove) * 100).toFixed(1)}pp`, btResult.avgFebiImprove >= 0 ? '#2e7d32' : '#c62828'],
                       ['触发总次数', btResult.totalTriggers, '#3730a3'],
                       ['自动执行次数', btResult.autoCount, '#2e7d32'],
-                      ['预算优化额', `¥${Math.round(btResult.budgetSaved).toLocaleString()}`, '#1565c0'],
+                      ['预算优化额(窗口)', `¥${Math.round(btResult.budgetSaved).toLocaleString()}`, btResult.budgetSaved >= 0 ? '#1565c0' : '#c62828'],
                     ] as [string, string | number, string][]).map(([l, v, c], i) => (
                       <div key={i} style={{ background: '#fff', borderRadius: 10, padding: 10, textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
                         <div style={{ fontSize: 18, fontWeight: 800, color: c }}>{v}</div>
@@ -733,7 +842,13 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
 
                   {/* Trend chart */}
                   <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.08)', padding: 14, marginBottom: 14 }}>
-                    <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>📈 费比趋势对比（有规则 vs 无规则）</div>
+                    <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      📈 费比趋势对比（有规则 vs 无规则）
+                      <span style={{ fontSize: 9, fontWeight: 600, color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: 4 }}>模拟估算</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 10, color: '#9ca3af', fontWeight: 500 }}>
+                        绿线 = 利润目标费比 {((btGross - btWeekly)).toFixed(0)}%
+                      </span>
+                    </div>
                     <div style={{ height: 200 }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={btResult.trendData}>
@@ -741,8 +856,9 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                           <XAxis dataKey="date" tick={{ fontSize: 9 }} interval={4} />
                           <YAxis tick={{ fontSize: 9 }} tickFormatter={v => (v * 100).toFixed(1) + '%'} />
                           <Tooltip formatter={(v) => typeof v === 'number' ? (v * 100).toFixed(2) + '%' : v} />
-                          <Line type="monotone" dataKey="withRule" stroke="#283593" strokeWidth={2} dot={false} name="有规则" />
                           <Line type="monotone" dataKey="noRule" stroke="#c62828" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="无规则" />
+                          <Line type="monotone" dataKey="withRule" stroke="#283593" strokeWidth={2} dot={false} name="有规则" />
+                          <Line type="monotone" dataKey="target" stroke="#2e7d32" strokeWidth={1} strokeDasharray="2 2" dot={false} name="利润目标" />
                         </ComposedChart>
                       </ResponsiveContainer>
                     </div>
