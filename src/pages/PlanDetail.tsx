@@ -26,6 +26,110 @@ type Tab = 'info' | 'params' | 'today' | 'history' | 'data'
 
 function fmtNum(v: number | null | undefined) { if (v == null) return '—'; return v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toLocaleString() }
 
+// ─── A4: 操作闭环回查 ─────────────────────────────────
+// 给定触发时刻 T 和该计划的小时数据,对比 触发前 vs 触发后 的费比/ROI
+// 用"触发时刻之前最近1小时"作为基线,"之后最近1小时"作为效果
+function computeEffect(hourlyData: HourlyRow[], triggerTime: string) {
+  const m = triggerTime.match(/(\d{1,2})/)
+  if (!m) return null
+  const tH = parseInt(m[1])
+  const valid = hourlyData.filter(r => r.febi != null && r.roi != null)
+  const before = [...valid].reverse().find(r => r.h < tH)
+  const after = valid.find(r => r.h >= tH)
+  // 最新非空数据 — 用于"已暂停"类无 after 的场景显示"暂停后无消耗"
+  const latest = valid[valid.length - 1]
+  if (!before && !after) return null
+  return { before, after, latest, triggerHour: tH }
+}
+
+interface VerifyProps { hourlyData: HourlyRow[]; triggerTime: string; rule: string }
+function EffectVerify({ hourlyData, triggerTime, rule }: VerifyProps) {
+  const e = computeEffect(hourlyData, triggerTime)
+  if (!e) return null
+  const { before, after, latest, triggerHour } = e
+
+  // 若没有 after,但 latest 在 trigger 之后且 spend=0 → 暂停成功(R1-A/R2-B等)
+  if (!after) {
+    const stoppedHours = hourlyData.filter(r => r.h >= triggerHour && r.spend === 0).length
+    if (stoppedHours > 0) {
+      return (
+        <div style={{ marginTop: 8, padding: '8px 10px', background: '#e8f5e9', border: '1px solid #a5d6a7', borderRadius: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#1b5e20', marginBottom: 4 }}>
+            🔍 效果回查 · 暂停生效
+          </div>
+          <div style={{ fontSize: 10.5, color: '#2e7d32' }}>
+            {triggerTime}起连续 {stoppedHours} 小时零消耗,止血成功,等待次日 DT 复查。
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div style={{ marginTop: 8, padding: '8px 10px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 8, fontSize: 10.5, color: '#64748b' }}>
+        🔍 效果回查 · 数据待累积,下一小时后可查看 {rule} 实际效果。
+      </div>
+    )
+  }
+  if (!before) {
+    return (
+      <div style={{ marginTop: 8, padding: '8px 10px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 8, fontSize: 10.5, color: '#64748b' }}>
+        🔍 效果回查 · {triggerTime} 之前无基线数据,无法对比。
+      </div>
+    )
+  }
+
+  const febiBefore = before.febi!, febiAfter = after.febi!
+  const roiBefore = before.roi!, roiAfter = after.roi!
+  const febiDelta = febiAfter - febiBefore
+  const roiDelta = roiAfter - roiBefore
+  // 对于"压量类"规则(R1-*,R2-*,R2-C),期望费比↓ ROI↑
+  // 对于"追量类"规则(R3,DT3),允许费比↑但ROI仍要保持
+  const isLoosen = /R3|DT3|WK2/.test(rule)
+  const febiImproved = isLoosen ? febiDelta < 1.5 : febiDelta < 0
+  const roiImproved = isLoosen ? roiAfter >= roiBefore * 0.95 : roiDelta > 0
+  const overall = febiImproved && roiImproved
+  const ok = '#2e7d32', bad = '#c62828', neutral = '#64748b'
+
+  // 与最新对比 — 若 after 不是最新,补充"持续中"提示
+  const continuing = latest && after && latest.h > after.h && latest.febi != null
+  const latestFebi = continuing ? latest.febi! : null
+
+  return (
+    <div style={{ marginTop: 8, padding: '8px 10px', background: overall ? '#e8f5e9' : '#fff3e0', border: `1px solid ${overall ? '#a5d6a7' : '#ffcc80'}`, borderRadius: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: overall ? ok : '#e65100', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>🔍 效果回查 · {overall ? '改善生效' : febiImproved || roiImproved ? '部分改善' : '效果不明显'}</span>
+        <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 500 }}>{before.h}:00 → {after.h}:00{continuing ? `(持续至 ${latest!.h}:00)` : ''}</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 10.5 }}>
+        <div style={{ background: '#fff', padding: '4px 8px', borderRadius: 5, border: '1px solid #e5e7eb' }}>
+          <div style={{ color: '#94a3b8', fontSize: 9 }}>费比</div>
+          <div>
+            <span style={{ color: '#6b7280' }}>{febiBefore.toFixed(1)}%</span>
+            <span style={{ color: '#94a3b8' }}> → </span>
+            <span style={{ color: febiImproved ? ok : bad, fontWeight: 800 }}>{febiAfter.toFixed(1)}%</span>
+            {latestFebi != null && (
+              <span style={{ color: neutral, fontSize: 9 }}> → {latestFebi.toFixed(1)}%</span>
+            )}
+            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: febiImproved ? ok : bad }}>
+              ({febiDelta >= 0 ? '+' : ''}{febiDelta.toFixed(1)}pp)
+            </span>
+          </div>
+        </div>
+        <div style={{ background: '#fff', padding: '4px 8px', borderRadius: 5, border: '1px solid #e5e7eb' }}>
+          <div style={{ color: '#94a3b8', fontSize: 9 }}>ROI</div>
+          <div>
+            <span style={{ color: '#6b7280' }}>{roiBefore.toFixed(2)}</span>
+            <span style={{ color: '#94a3b8' }}> → </span>
+            <span style={{ color: roiImproved ? ok : bad, fontWeight: 800 }}>{roiAfter.toFixed(2)}</span>
+            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: roiImproved ? ok : bad }}>
+              ({roiDelta >= 0 ? '+' : ''}{roiDelta.toFixed(2)})
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function PlanDetail({ planName, storePlans, onClose }: Props) {
   const plan = (storePlans || plans).find(p => p.name === planName)
   const [activeTab, setActiveTab] = useState<Tab>('info')
@@ -366,6 +470,10 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
                               </svg>
                               正在调用平台 API…
                             </div>
+                          )}
+                          {/* A4: 操作闭环回查 — 已确认/已执行的动作显示真实效果 */}
+                          {(status === 'ok' || status === 'confirmed') && hourlyData.length > 0 && (
+                            <EffectVerify hourlyData={hourlyData} triggerTime={t.time} rule={t.rule} />
                           )}
                           {apiRes && (
                             <div className="border border-green-200 rounded-lg bg-green-50 p-2.5 mt-2">

@@ -12,6 +12,9 @@ interface Props {
 type SortKey = 'zone' | 'name' | 'roiTarget' | 'febi' | 'budget' | 'spend'
 const zoneOrder = { red: 0, yellow: 1, green: 2 }
 
+type ZoneFilter = 'all' | 'red' | 'yellow' | 'green'
+type RuleFilter = 'all' | 'pending' | 'triggered' | 'none'
+
 export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
   const [planData, setPlanData] = useState<PlanData[]>(initialPlans)
   const [sortKey, setSortKey] = useState<SortKey>('zone')
@@ -20,6 +23,9 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
   const [editingPlan, setEditingPlan] = useState<PlanData | null>(null)
   const [showCompare, setShowCompare] = useState(false)
   const [limitToast, setLimitToast] = useState(false)
+  const [search, setSearch] = useState('')
+  const [zoneFilter, setZoneFilter] = useState<ZoneFilter>('all')
+  const [ruleFilter, setRuleFilter] = useState<RuleFilter>('all')
   const lastClickedRef = useRef<string | null>(null)
 
   // Sync planData when store changes
@@ -30,7 +36,19 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
     setSelectedNames(new Set())
   }
 
-  const sorted = [...planData].sort((a, b) => {
+  const filtered = planData.filter(p => {
+    if (zoneFilter !== 'all' && p.zone !== zoneFilter) return false
+    if (ruleFilter === 'pending' && !p.rule.includes('待确认')) return false
+    if (ruleFilter === 'triggered' && (!p.rule || p.rule === '—')) return false
+    if (ruleFilter === 'none' && p.rule && p.rule !== '—') return false
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      if (!p.name.toLowerCase().includes(q) && !p.rule.toLowerCase().includes(q)) return false
+    }
+    return true
+  })
+
+  const sorted = [...filtered].sort((a, b) => {
     let va: number | string = a[sortKey] as number | string
     let vb: number | string = b[sortKey] as number | string
     if (sortKey === 'zone') { va = zoneOrder[a.zone]; vb = zoneOrder[b.zone] }
@@ -151,7 +169,9 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
         <div className="px-3 py-2 font-bold text-xs border-b border-gray-100 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <span>📋 计划管理总表</span>
-            <span className="text-gray-400 font-normal">{planData.length}个计划</span>
+            <span className="text-gray-400 font-normal">
+              {filtered.length === planData.length ? `${planData.length}个计划` : `${filtered.length}/${planData.length}个`}
+            </span>
             {selectedNames.size > 0 && (
               <span className="text-indigo-600 font-normal">已选{selectedNames.size}个</span>
             )}
@@ -177,6 +197,70 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
               ⬇ 导出Excel
             </button>
           </div>
+        </div>
+
+        {/* C9: 搜索/筛选工具栏 */}
+        <div style={{ padding: '6px 12px', background: '#fafbfc', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '1 1 180px', maxWidth: 280 }}>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="🔍 搜索计划名或规则…"
+              style={{ width: '100%', padding: '4px 28px 4px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 11, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+              onFocus={e => (e.target.style.borderColor = '#6366f1')}
+              onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
+            />
+            {search && (
+              <button onClick={() => setSearch('')}
+                style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 2 }}>
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 3 }}>
+            {(['all', 'red', 'yellow', 'green'] as const).map(z => {
+              const labels = { all: '全部', red: '🔴 红区', yellow: '🟡 黄区', green: '🟢 绿区' }
+              const active = zoneFilter === z
+              return (
+                <button key={z} onClick={() => setZoneFilter(z)}
+                  style={{
+                    padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                    border: `1px solid ${active ? '#6366f1' : '#e5e7eb'}`,
+                    background: active ? '#eef2ff' : '#fff',
+                    color: active ? '#4338ca' : '#6b7280',
+                  }}>
+                  {labels[z]}
+                </button>
+              )
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 3 }}>
+            {(['all', 'pending', 'triggered', 'none'] as const).map(r => {
+              const labels = { all: '全规则', pending: '⏳ 待确认', triggered: '⚡ 有触发', none: '— 无触发' }
+              const active = ruleFilter === r
+              return (
+                <button key={r} onClick={() => setRuleFilter(r)}
+                  style={{
+                    padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                    border: `1px solid ${active ? '#f59e0b' : '#e5e7eb'}`,
+                    background: active ? '#fff7ed' : '#fff',
+                    color: active ? '#c2410c' : '#6b7280',
+                  }}>
+                  {labels[r]}
+                </button>
+              )
+            })}
+          </div>
+
+          {(search || zoneFilter !== 'all' || ruleFilter !== 'all') && (
+            <button onClick={() => { setSearch(''); setZoneFilter('all'); setRuleFilter('all') }}
+              style={{ padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', cursor: 'pointer', marginLeft: 'auto' }}>
+              ⟲ 清除筛选
+            </button>
+          )}
         </div>
 
         {limitToast && (
@@ -210,6 +294,19 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
               </tr>
             </thead>
             <tbody>
+              {sorted.length === 0 && (
+                <tr>
+                  <td colSpan={13} className="text-center text-gray-400 py-8 text-xs">
+                    没有符合筛选条件的计划
+                    {(search || zoneFilter !== 'all' || ruleFilter !== 'all') && (
+                      <button onClick={() => { setSearch(''); setZoneFilter('all'); setRuleFilter('all') }}
+                        style={{ marginLeft: 10, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 700, background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe', cursor: 'pointer' }}>
+                        清除筛选
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )}
               {sorted.map(p => {
                 const s = zoneStyle[p.zone]
                 const stopLossRoi = +(1 / p.gross).toFixed(2)
