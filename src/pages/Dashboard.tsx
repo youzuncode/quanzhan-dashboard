@@ -1,4 +1,8 @@
 import { useState } from 'react'
+import { loadJSON, saveJSON } from '../lib/persist'
+
+type MainView = 'home' | 'plans'
+const LS_VIEW = 'dashboard.mainView'
 import { TopBar } from '../components/layout/TopBar'
 import { KPICards } from '../components/dashboard/KPICards'
 import { StoreBar } from '../components/StoreBar'
@@ -20,6 +24,8 @@ import {
 
 export function Dashboard() {
   const [selectedStoreId, setSelectedStoreId] = useState('store1')
+  const [view, setViewRaw] = useState<MainView>(() => loadJSON<MainView>(LS_VIEW, 'home'))
+  const setView = (v: MainView) => { setViewRaw(v); saveJSON(LS_VIEW, v) }
   const [showRuleEngine, setShowRuleEngine] = useState(false)
   const [showInspect, setShowInspect] = useState(false)
   const [showAlerts, setShowAlerts] = useState(false)
@@ -48,6 +54,31 @@ export function Dashboard() {
         selectedStoreId={selectedStoreId}
         onSelectStore={setSelectedStoreId}
       />
+      {/* Main view tab strip */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        {([
+          { k: 'home' as MainView, label: '📊 决策看板', sub: 'KPI · 待办 · 巡检 · 图表' },
+          { k: 'plans' as MainView, label: '📋 推广计划', sub: `${sp.length} 个计划 · 操作日志` },
+        ]).map(t => {
+          const active = view === t.k
+          return (
+            <button key={t.k} onClick={() => setView(t.k)}
+              style={{
+                padding: '10px 18px 9px',
+                color: active ? '#3730a3' : '#6b7280',
+                background: 'none',
+                border: 'none',
+                borderBottom: `2.5px solid ${active ? '#3730a3' : 'transparent'}`,
+                cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
+              }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>{t.label}</span>
+              <span style={{ fontSize: 9.5, color: active ? '#6366f1' : '#9ca3af', fontWeight: 500 }}>{t.sub}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {view === 'home' && (
       <div className="p-3 flex-1">
         <KPICards storeConfig={cfg} storePlans={sp} />
         <TodoQueue plans={sp} storeConfig={cfg} onSelectPlan={name => setSelectedPlan(name)} />
@@ -58,6 +89,11 @@ export function Dashboard() {
         <div className="flex gap-2.5 mb-2.5">
           <InspectionPanel timepoints={tps} />
         </div>
+      </div>
+      )}
+
+      {view === 'plans' && (
+      <div className="p-3 flex-1">
         <PlanTable
           plans={currentStore.plans}
           onSelectPlan={name => setSelectedPlan(name)}
@@ -108,6 +144,7 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Overlays */}
       {showAlerts && <AlertSidePanel plans={sp} onClose={() => setShowAlerts(false)} />}
