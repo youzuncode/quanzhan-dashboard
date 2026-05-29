@@ -36,7 +36,7 @@ export function ParamPanel() {
                   <div className="flex items-center gap-1 flex-wrap">
                     <span className="font-semibold text-gray-700">{it.cur}</span>
                     <span className="text-gray-400">→</span>
-                    <span className="font-bold text-indigo-800">{it.nw}</span>
+                    <span className="font-bold" style={{ color: op.type === 'roi' && parseFloat(String(it.nw)) < parseFloat(String(it.cur)) ? '#c62828' : '#2e7d32' }}>{it.nw}</span>
                     <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${badgeCls[op.type]}`}>{it.badge}</span>
                   </div>
                 </div>

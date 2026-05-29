@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { TopBar } from '../components/layout/TopBar'
+import { KPICards } from '../components/dashboard/KPICards'
 import { StoreBar } from '../components/StoreBar'
 import { ParamPanel } from '../components/ParamPanel'
 import { ProblemsOpps } from '../components/ProblemsOpps'
@@ -28,6 +29,7 @@ export function Dashboard() {
         onOpenAlerts={() => setShowAlerts(true)}
       />
       <div className="p-3 flex-1">
+        <KPICards />
         <StoreBar />
         <ParamPanel />
         <ProblemsOpps />
@@ -53,25 +55,29 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {actionLog.map((l, i) => (
-                  <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-2 py-1.5 text-gray-400 whitespace-nowrap">{l.time}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{l.timepoint}</td>
-                    <td className="px-2 py-1.5 font-semibold">{l.plan}</td>
-                    <td className="px-2 py-1.5"><span className="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">{l.rule}</span></td>
-                    <td className="px-2 py-1.5 text-gray-600 max-w-52 truncate">{l.action}</td>
-                    <td className="px-2 py-1.5">
-                      <span className={`text-xs px-1.5 py-0.5 rounded font-semibold
-                        ${l.type === 'executed' ? 'bg-green-100 text-green-800' :
-                          l.type === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                          l.type === 'dismissed' ? 'bg-gray-100 text-gray-500' : 'bg-gray-100 text-gray-700'}`}>
-                        {l.type === 'executed' ? '自动执行' : l.type === 'confirmed' ? '已确认' : l.type === 'dismissed' ? '已忽略' : l.type}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5 text-gray-400">{l.operator}</td>
-                    <td className="px-2 py-1.5 text-gray-400">{l.note || '—'}</td>
-                  </tr>
-                ))}
+                {[...actionLog].reverse().map((l, i) => {
+                  const isAuto = l.type === 'executed'
+                  const isDismissed = l.type === 'dismissed'
+                  const isConfirmed = l.type === 'confirmed'
+                  const typeLbl: Record<string, string> = { executed: '🤖 自动执行', confirmed: '✅ 人工确认', dismissed: '✗ 已忽略', info: '📋 记录', api_error: '❌ API失败' }
+                  const typeCls: Record<string, string> = { executed: 'bg-gray-100 text-gray-600', confirmed: 'bg-green-100 text-green-800', dismissed: 'bg-gray-100 text-gray-400', info: 'bg-blue-50 text-blue-700', api_error: 'bg-red-100 text-red-800' }
+                  return (
+                    <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', opacity: isAuto ? 0.75 : 1, textDecoration: isDismissed ? 'line-through' : 'none', fontWeight: isConfirmed ? 600 : 400 }}>
+                      <td className="px-2 py-1.5 whitespace-nowrap font-semibold">{l.time}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">{l.timepoint}</td>
+                      <td className="px-2 py-1.5 font-semibold">{l.plan}</td>
+                      <td className="px-2 py-1.5"><span className="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold" style={{ fontSize: 8 }}>{l.rule}</span></td>
+                      <td className="px-2 py-1.5 text-indigo-800 max-w-52" style={{ fontSize: 10 }}>{l.action}</td>
+                      <td className="px-2 py-1.5">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${typeCls[l.type] || 'bg-gray-100 text-gray-600'}`}>
+                          {typeLbl[l.type] || l.type}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5">{l.operator}</td>
+                      <td className="px-2 py-1.5 text-gray-400">{l.note || '—'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -1,84 +1,92 @@
-import type { Plan, StoreConfig } from '../../types/database'
+import { store, plans } from '../../lib/mockData'
 
-interface Props {
-  plans: Plan[]
-  store: StoreConfig
+function num(v: number) {
+  return v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toLocaleString('zh-CN')
 }
 
-export function KPICards({ plans, store }: Props) {
-  const totalSpend = plans.reduce((s, p) => s + p.spend_today, 0)
-  const totalRevenue = plans.reduce((s, p) => s + p.revenue_today, 0)
-  const storeRoi = totalSpend > 0 ? totalRevenue / totalSpend : 0
-  const storeCostRate = totalRevenue > 0 ? totalSpend / totalRevenue : 0
-
+export function KPICards() {
   const greenCount = plans.filter(p => p.zone === 'green').length
   const yellowCount = plans.filter(p => p.zone === 'yellow').length
   const redCount = plans.filter(p => p.zone === 'red').length
 
-  const pendingAlerts = 2
+  const fc = store.febi > store.grossMargin ? 'red' : store.febi > store.targetFebi ? 'yellow' : 'green'
+  const pp = Math.round(store.weeklyNetProfit / store.weeklyTarget * 100)
+  const pc = store.weeklyNetProfit >= store.weeklyTarget ? 'green' : store.weeklyNetProfit >= 0.05 ? 'yellow' : 'red'
 
-  const kpis = [
+  type KpiColor = 'blue' | 'green' | 'red' | 'yellow' | 'indigo'
+  const kpis: Array<{
+    cls: KpiColor
+    label: string
+    val: string
+    sub: string
+    trend: string
+    tdir: 'up' | 'dn'
+  }> = [
     {
-      label: '今日花费',
-      value: '¥' + totalSpend.toLocaleString(),
-      sub: `预算 ¥${plans.reduce((s, p) => s + p.daily_budget, 0).toLocaleString()}`,
-      color: 'blue',
-      trend: null,
+      cls: 'blue',
+      label: '今日全店花费',
+      val: '¥' + num(store.totalSpend),
+      sub: '成交额: ¥' + num(store.totalRevenue),
+      trend: '↑5.2% vs 昨日',
+      tdir: 'up',
     },
     {
-      label: '今日成交额',
-      value: '¥' + totalRevenue.toLocaleString(),
-      sub: `全店 ROI ${storeRoi.toFixed(2)}`,
-      color: 'green',
-      trend: '+12%',
-      trendUp: true,
+      cls: fc as KpiColor,
+      label: '今日全店费比',
+      val: (store.febi * 100).toFixed(1) + '%',
+      sub: `目标:${(store.targetFebi * 100).toFixed(0)}% | 止损:${(store.grossMargin * 100).toFixed(0)}%`,
+      trend: fc === 'red' ? '⚠ 红区' : fc === 'yellow' ? '▲ 黄区' : '✓ 绿区',
+      tdir: fc === 'green' ? 'up' : 'dn',
     },
     {
-      label: '全店费比',
-      value: (storeCostRate * 100).toFixed(1) + '%',
-      sub: `Gross毛利 ${(store.gross_margin_rate * 100).toFixed(0)}% | 止损 ${(store.gross_margin_rate * 100).toFixed(0)}%`,
-      color: storeCostRate > store.gross_margin_rate ? 'red' : storeCostRate > store.gross_margin_rate - 0.1 ? 'yellow' : 'green',
-      trend: null,
+      cls: pc as KpiColor,
+      label: '本周净毛利率',
+      val: (store.weeklyNetProfit * 100).toFixed(1) + '%',
+      sub: `目标10% · 完成${pp}%`,
+      trend: pp >= 100 ? '✓ 已达标' : `差${((store.weeklyTarget - store.weeklyNetProfit) * 100).toFixed(1)}pp`,
+      tdir: pp >= 100 ? 'up' : 'dn',
     },
     {
-      label: '计划三区间',
-      value: `🟢${greenCount} 🟡${yellowCount} 🔴${redCount}`,
-      sub: `共 ${plans.length} 个计划`,
-      color: redCount > 0 ? 'red' : yellowCount > 0 ? 'yellow' : 'green',
-      trend: null,
+      cls: 'yellow',
+      label: '三区 红/黄/绿',
+      val: `${redCount}/${yellowCount}/${greenCount}`,
+      sub: `共${plans.length}个计划`,
+      trend: '收紧模式',
+      tdir: 'dn',
     },
     {
-      label: '待确认操作',
-      value: pendingAlerts.toString(),
-      sub: '需人工确认',
-      color: pendingAlerts > 0 ? 'yellow' : 'green',
-      trend: null,
+      cls: 'red',
+      label: '今日触发规则',
+      val: String(store.triggeredRulesCount),
+      sub: 'R1×1 R2×2 R3×3',
+      trend: '待确认: 3条',
+      tdir: 'dn',
     },
   ]
 
-  const colorMap: Record<string, { bar: string; val: string }> = {
-    green: { bar: 'bg-green-700', val: 'text-green-700' },
-    yellow: { bar: 'bg-yellow-600', val: 'text-yellow-600' },
-    red: { bar: 'bg-red-700', val: 'text-red-700' },
-    blue: { bar: 'bg-blue-700', val: 'text-blue-700' },
-    indigo: { bar: 'bg-indigo-800', val: 'text-indigo-800' },
+  const colorMap: Record<KpiColor, { bar: string; val: string }> = {
+    green: { bar: '#2e7d32', val: '#2e7d32' },
+    yellow: { bar: '#f57f17', val: '#f57f17' },
+    red: { bar: '#c62828', val: '#c62828' },
+    blue: { bar: '#1565c0', val: '#1565c0' },
+    indigo: { bar: '#283593', val: '#283593' },
   }
 
   return (
-    <div className="grid grid-cols-5 gap-2.5 mb-2.5">
-      {kpis.map((k) => {
-        const c = colorMap[k.color] ?? colorMap.blue
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 10 }}>
+      {kpis.map(k => {
+        const c = colorMap[k.cls]
         return (
-          <div key={k.label} className="bg-white rounded-xl p-3 shadow-sm relative overflow-hidden">
-            <div className={`absolute top-0 left-0 right-0 h-0.5 ${c.bar}`} />
-            <div className="text-xs text-gray-500 mb-1">{k.label}</div>
-            <div className={`text-xl font-bold leading-none ${c.val}`}>{k.value}</div>
-            <div className="text-xs text-gray-400 mt-1">{k.sub}</div>
-            {k.trend && (
-              <div className={`text-xs mt-0.5 font-semibold ${k.trendUp ? 'text-green-600' : 'text-red-600'}`}>
-                {k.trendUp ? '▲' : '▼'} {k.trend}
-              </div>
-            )}
+          <div key={k.label}
+            style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 1px 4px rgba(0,0,0,.08)', position: 'relative', overflow: 'hidden' }}>
+            {/* 顶部 3px 彩色条 */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: c.bar }} />
+            <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>{k.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1, color: c.val }}>{k.val}</div>
+            <div style={{ fontSize: 10, color: '#aaa', marginTop: 4 }}>{k.sub}</div>
+            <div style={{ fontSize: 10, marginTop: 3, fontWeight: 600, color: k.tdir === 'up' ? '#2e7d32' : '#c62828' }}>
+              {k.trend}
+            </div>
           </div>
         )
       })}
