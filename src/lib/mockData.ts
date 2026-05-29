@@ -907,6 +907,39 @@ const plans3: PlanData[] = [
   { name: '花王洁霸洗衣凝珠',   zone: 'yellow', roiTarget: 5.2, febi: 0.22, gross: 0.26, budget: 1600, spend: 3500,  conf: 'M', guard: false, rule: 'DT1触发',   action: 'ROI+8%→5.62\n明日预算×0.90' },
 ]
 
+// Generate a store-specific action log from any store's plans
+export function generateActionLog(storePlans: PlanData[]): ActionLogEntry[] {
+  const log: ActionLogEntry[] = []
+  const timeLabels = [
+    ['09:12', '09:00 天层参数'], ['11:45', '12:00 低置信巡检'],
+    ['14:03', '14:00 止损巡检'], ['16:20', '16:00 绿区保障'],
+    ['18:05', '18:00 ⭐最重要巡检'], ['20:18', '20:00 最后追加'],
+  ]
+  let seed = storePlans.length * 17
+  const rng = () => { seed = (seed * 1664525 + 1013904223) & 0x7fffffff; return seed / 0x7fffffff }
+
+  storePlans.forEach((p, i) => {
+    if (!p.rule || p.rule === '—') return
+    const ruleKey = p.rule.replace(/[待确认已预执行触发中]/g, '').trim() || p.rule
+    const isPending = p.rule.includes('待确认')
+    const isExecuted = p.rule.includes('已预执行') || p.rule.includes('已执行') || p.rule.includes('触发中')
+    const [time, timepoint] = timeLabels[i % timeLabels.length]
+    const type = isPending ? 'info' : isExecuted ? 'executed' : 'confirmed'
+    const operator = isPending ? '待人工确认' : rng() > 0.5 ? '系统自动' : '操作员'
+    log.push({
+      time,
+      timepoint,
+      plan: p.name,
+      rule: ruleKey,
+      action: p.action.replace(/\n/g, ' | '),
+      type,
+      operator,
+      note: isPending ? '需在截止时间前确认' : '',
+    })
+  })
+  return log
+}
+
 export const STORES: StoreInfo[] = [
   {
     id: 'store1',

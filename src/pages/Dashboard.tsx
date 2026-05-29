@@ -11,8 +11,7 @@ import { AlertSidePanel } from '../components/AlertSidePanel'
 import { RuleEnginePage } from './RuleEnginePage'
 import { InspectPage } from './InspectPage'
 import { PlanDetail } from './PlanDetail'
-import { initialActionLog, STORES } from '../lib/mockData'
-import type { ActionLogEntry } from '../lib/mockData'
+import { initialActionLog, generateActionLog, STORES } from '../lib/mockData'
 
 export function Dashboard() {
   const [selectedStoreId, setSelectedStoreId] = useState('store1')
@@ -20,9 +19,9 @@ export function Dashboard() {
   const [showInspect, setShowInspect] = useState(false)
   const [showAlerts, setShowAlerts] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
-  const [actionLog] = useState<ActionLogEntry[]>(initialActionLog)
 
   const currentStore = STORES.find(s => s.id === selectedStoreId) || STORES[0]
+  const actionLog = selectedStoreId === 'store1' ? initialActionLog : generateActionLog(currentStore.plans)
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f4f8' }}>
@@ -95,9 +94,9 @@ export function Dashboard() {
 
       {/* Overlays */}
       {showAlerts && <AlertSidePanel plans={currentStore.plans} onClose={() => setShowAlerts(false)} />}
-      {showRuleEngine && <RuleEnginePage onClose={() => setShowRuleEngine(false)} />}
+      {showRuleEngine && <RuleEnginePage plans={currentStore.plans} onClose={() => setShowRuleEngine(false)} />}
       {showInspect && <InspectPage plans={currentStore.plans} onClose={() => setShowInspect(false)} />}
-      {selectedPlan && <PlanDetail planName={selectedPlan} onClose={() => setSelectedPlan(null)} />}
+      {selectedPlan && <PlanDetail planName={selectedPlan} storePlans={currentStore.plans} onClose={() => setSelectedPlan(null)} />}
     </div>
   )
 }

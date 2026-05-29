@@ -12,13 +12,14 @@ import { ArrowLeft } from 'lucide-react'
 import { plans, PLAN_PARAMS, PLAN_TODAY_TRIGGERS, PLAN_HIST_LOG, planErr, MOCK_API_PARAMS, PLAN_DAILY_DATA, PLAN_HOURLY_DATA, enrichRow } from '../lib/mockData'
 import type { TodayTrigger, DailyRow, HourlyRow } from '../lib/mockData'
 
-interface Props { planName: string; onClose: () => void }
+// PlanData imported below in DataPane section
+interface Props { planName: string; storePlans?: import('../lib/mockData').PlanData[]; onClose: () => void }
 type Tab = 'info' | 'params' | 'today' | 'history' | 'data'
 
 function fmtNum(v: number | null | undefined) { if (v == null) return '—'; return v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toLocaleString() }
 
-export function PlanDetail({ planName, onClose }: Props) {
-  const plan = plans.find(p => p.name === planName)
+export function PlanDetail({ planName, storePlans, onClose }: Props) {
+  const plan = (storePlans || plans).find(p => p.name === planName)
   const [activeTab, setActiveTab] = useState<Tab>('info')
   const [triggerStates, setTriggerStatesRaw] = useState<Record<string, { status: string; operator: string; execTime?: string }>>(() => _triggerStateCache.get(planName) || {})
   const [apiResults, setApiResultsRaw] = useState<Record<string, { status: string; message: string; params: { key: string; before: string; after: string; change: string; dir: string }[] }>>(() => _apiResultCache.get(planName) || {})

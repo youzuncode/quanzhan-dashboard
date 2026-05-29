@@ -1,9 +1,12 @@
 import { useState, useMemo } from 'react'
-import { RULE_DEFS, PLAN_HIST_LOG, plans } from '../lib/mockData'
+import { RULE_DEFS, PLAN_HIST_LOG, plans as defaultPlans } from '../lib/mockData'
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Line, ComposedChart, Bar } from 'recharts'
+
+import type { PlanData } from '../lib/mockData'
 
 interface Props {
   onClose: () => void
+  plans?: PlanData[]
 }
 
 type Tab = 'overview' | 'log' | 'eval' | 'config' | 'backtest'
@@ -82,7 +85,7 @@ function computeEffects(execs: ReturnType<typeof collectExecs>) {
 }
 
 // ─── Backtest simulation ────────────────────────────────
-function runBacktest(startDate: string, endDate: string, _gross: number, _weeklyTarget: number, selectedRules: Set<string>) {
+function runBacktest(startDate: string, endDate: string, _gross: number, _weeklyTarget: number, selectedRules: Set<string>, planNames: string[] = defaultPlans.map(p => p.name)) {
   // Generate 30 dates
   const dates: string[] = []
   const start = new Date(startDate)
@@ -99,7 +102,6 @@ function runBacktest(startDate: string, endDate: string, _gross: number, _weekly
   })
 
   // Build detail rows
-  const planNames = plans.map(p => p.name)
   const ruleKeys = [...selectedRules]
   const detailRows: { date: string; plan: string; rule: string; rDef: typeof RULE_DEFS[0]; action: string; estRoiDelta: number; estFebiDelta: number; auto: boolean }[] = []
   dates.slice(0, 10).forEach(date => {
@@ -126,7 +128,8 @@ function runBacktest(startDate: string, endDate: string, _gross: number, _weekly
   return { trendData, detailRows, autoCount, totalTriggers, avgFebiImprove, avgRoiImprove, budgetSaved }
 }
 
-export function RuleEnginePage({ onClose }: Props) {
+export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
+  const plans = propPlans || defaultPlans
   const [tab, setTab] = useState<Tab>('overview')
   const [fltPlan, setFltPlan] = useState('')
   const [fltRule, setFltRule] = useState('')
@@ -692,7 +695,7 @@ export function RuleEnginePage({ onClose }: Props) {
               ))}
 
               <button
-                onClick={() => setBtResult(runBacktest(btStart, btEnd, btGross / 100, btWeekly / 100, btRules))}
+                onClick={() => setBtResult(runBacktest(btStart, btEnd, btGross / 100, btWeekly / 100, btRules, plans.map(p => p.name)))}
                 style={{ width: '100%', padding: '9px', marginTop: 14, borderRadius: 8, background: '#3730a3', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', border: 'none' }}>
                 ▶ 运行回测
               </button>
