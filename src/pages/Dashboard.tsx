@@ -8,12 +8,14 @@ import { InspectionPanel } from '../components/inspection/InspectionPanel'
 import { PlanTable } from '../components/dashboard/PlanTable'
 import { AlertSidePanel } from '../components/AlertSidePanel'
 import { RuleEnginePage } from './RuleEnginePage'
+import { InspectPage } from './InspectPage'
 import { PlanDetail } from './PlanDetail'
 import { initialActionLog } from '../lib/mockData'
 import type { ActionLogEntry } from '../lib/mockData'
 
 export function Dashboard() {
   const [showRuleEngine, setShowRuleEngine] = useState(false)
+  const [showInspect, setShowInspect] = useState(false)
   const [showAlerts, setShowAlerts] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
   const [actionLog] = useState<ActionLogEntry[]>(initialActionLog)
@@ -22,6 +24,7 @@ export function Dashboard() {
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f4f8' }}>
       <TopBar
         onOpenRuleEngine={() => setShowRuleEngine(true)}
+        onOpenInspection={() => setShowInspect(true)}
         onOpenAlerts={() => setShowAlerts(true)}
       />
       <div className="p-3 flex-1">
@@ -78,6 +81,7 @@ export function Dashboard() {
       {/* Overlays */}
       {showAlerts && <AlertSidePanel onClose={() => setShowAlerts(false)} />}
       {showRuleEngine && <RuleEnginePage onClose={() => setShowRuleEngine(false)} />}
+      {showInspect && <InspectPage onClose={() => setShowInspect(false)} />}
       {selectedPlan && <PlanDetail planName={selectedPlan} onClose={() => setSelectedPlan(null)} />}
     </div>
   )

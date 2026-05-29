@@ -10,7 +10,7 @@ interface Props {
   onOpenAlerts: () => void
 }
 
-export function TopBar({ onOpenRuleEngine, onOpenAlerts }: Props) {
+export function TopBar({ onOpenRuleEngine, onOpenInspection, onOpenAlerts }: Props) {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export function TopBar({ onOpenRuleEngine, onOpenAlerts }: Props) {
           style={{ background: 'rgba(255,255,255,.15)' }}>
           <Settings size={11} /> 规则引擎
         </button>
-        <button
+        <button onClick={onOpenInspection}
           className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border border-white/30"
           style={{ background: 'rgba(255,255,255,.15)' }}>
           <Clock size={11} /> 巡检
