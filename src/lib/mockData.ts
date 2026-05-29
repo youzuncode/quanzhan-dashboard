@@ -1120,6 +1120,89 @@ export function generateTimepoints(plans: PlanData[]): Timepoint[] {
   })
 }
 
+// ─── 100-plan stress-test store ────────────────────────
+// 确定性生成:同名前缀循环 + seeded RNG → 每次刷新结果相同
+function _genStressPlans(): PlanData[] {
+  const out: PlanData[] = []
+  const categories = [
+    ['美妆', ['口红', '粉底液', '气垫', '眼影盘', '腮红', '香水', '卸妆水', '面膜', '精华', '面霜']],
+    ['母婴', ['奶粉', '尿不湿', '湿巾', '婴儿洗发', '辅食', '奶瓶', '玩具', '童装', '推车', '安抚奶嘴']],
+    ['食品', ['坚果', '饼干', '巧克力', '咖啡', '茶叶', '麦片', '蜂蜜', '酸奶', '橄榄油', '挂面']],
+    ['家电', ['吹风机', '电饭煲', '空气炸锅', '榨汁机', '电动牙刷', '剃须刀', '扫地机', '加湿器', '电烤箱', '咖啡机']],
+    ['服饰', ['连衣裙', 'T恤', '牛仔裤', '运动鞋', '帆布鞋', '毛衣', '羽绒服', '内衣', '袜子', '衬衫']],
+    ['宠物', ['猫粮', '狗粮', '猫砂', '宠物零食', '驱虫药', '宠物玩具', '猫爬架', '宠物床', '牵引绳', '宠物洗护']],
+  ] as const
+  const brands = ['优选', '优品', '臻选', '严选', '甄选', '甄品', '匠造', '臻享', '日记', '良品']
+  let seed = 20260529
+  const rng = () => { seed = (seed * 1664525 + 1013904223) & 0x7fffffff; return seed / 0x7fffffff }
+  const pick = <T,>(arr: readonly T[]) => arr[Math.floor(rng() * arr.length)]
+
+  for (let i = 0; i < 100; i++) {
+    const [, items] = pick(categories)
+    const brand = pick(brands)
+    const item = pick(items)
+    const name = `${brand}${item}-${String(i + 1).padStart(3, '0')}`
+
+    // 区间分布:大致 15% 红 30% 黄 55% 绿(模拟真实店铺健康度)
+    const r = rng()
+    const zone: 'red' | 'yellow' | 'green' = r < 0.15 ? 'red' : r < 0.45 ? 'yellow' : 'green'
+    const gross = +(0.25 + rng() * 0.18).toFixed(2)
+    let febi: number, roiTarget: number, ruleStr: string, action: string, conf: 'H' | 'M' | 'L', guard: boolean
+    const budget = Math.round((500 + rng() * 4500) / 100) * 100
+    const spend = Math.round(budget * (0.3 + rng() * 1.8))
+
+    if (zone === 'red') {
+      febi = +(gross + 0.02 + rng() * 0.08).toFixed(2)
+      roiTarget = +(2.5 + rng() * 2).toFixed(1)
+      const pending = rng() < 0.45
+      ruleStr = pending ? 'R2-B待确认' : (rng() < 0.5 ? 'R1-A,R2-B' : 'R2-B')
+      action = pending ? `ROI:${roiTarget}→${(1 / gross * 1.1).toFixed(2)} | 剩余×0.60\n待人工确认→` : `暂停（预算→¥0）\nROI:${roiTarget}→${(1 / gross * 1.1).toFixed(2)}`
+      conf = rng() < 0.3 ? 'L' : 'M'
+      guard = false
+    } else if (zone === 'yellow') {
+      febi = +(gross - 0.1 + rng() * 0.07).toFixed(2)
+      roiTarget = +(4 + rng() * 1.5).toFixed(1)
+      const r2 = rng()
+      ruleStr = r2 < 0.25 ? 'DT1已预执行' : r2 < 0.45 ? 'R2-C待确认' : r2 < 0.55 ? 'DT1触发' : '—'
+      action = ruleStr === '—' ? `ROI维持${roiTarget} | 预算维持` :
+               ruleStr.includes('待确认') ? `ROI:${roiTarget}→${(roiTarget * 1.1).toFixed(2)} | 剩余×0.80\n待人工确认→` :
+               `ROI已调${roiTarget}→${(roiTarget * 1.08).toFixed(2)}\n明日预算×0.90`
+      conf = rng() < 0.65 ? 'H' : 'M'
+      guard = false
+    } else {
+      febi = +(0.1 + rng() * (gross - 0.12)).toFixed(2)
+      roiTarget = +(5 + rng() * 3).toFixed(1)
+      const r2 = rng()
+      ruleStr = r2 < 0.35 ? 'R3触发中' : '—'
+      action = ruleStr === '—' ? `ROI维持${roiTarget} | 预算维持` :
+               `ROI维持${roiTarget}\n预算+${Math.round(15 + rng() * 15)}%→¥${Math.round(budget * 1.18).toLocaleString()}`
+      conf = rng() < 0.75 ? 'H' : 'M'
+      guard = true
+    }
+
+    out.push({ name, zone, roiTarget, febi, gross, budget, spend, conf, guard, rule: ruleStr, action })
+  }
+  return out
+}
+const plans4 = _genStressPlans()
+const store4Config = (() => {
+  const totalSpend = plans4.reduce((s, p) => s + p.spend, 0)
+  const totalRevenue = plans4.reduce((s, p) => s + (p.febi > 0 ? p.spend / p.febi : 0), 0)
+  const wFebi = totalSpend / totalRevenue
+  const grossMargin = 0.32
+  return {
+    febi: +wFebi.toFixed(3),
+    weeklyNetProfit: +(grossMargin - wFebi).toFixed(3),
+    weeklyTarget: 0.10,
+    grossMargin,
+    targetFebi: +(grossMargin - 0.1).toFixed(2),
+    storeMarginGap: +(grossMargin - wFebi - 0.10).toFixed(3),
+    totalSpend: Math.round(totalSpend),
+    totalRevenue: Math.round(totalRevenue),
+    triggeredRulesCount: plans4.filter(p => p.rule && p.rule !== '—').length,
+  }
+})()
+
 export const STORES: StoreInfo[] = [
   {
     id: 'store1',
@@ -1144,6 +1227,14 @@ export const STORES: StoreInfo[] = [
     tagColor: '#2e7d32',
     storeConfig: store3Config,
     plans: plans3,
+  },
+  {
+    id: 'store4',
+    name: '压测店铺',
+    tag: '压测',
+    tagColor: '#ea580c',
+    storeConfig: store4Config,
+    plans: plans4,
   },
 ]
 
