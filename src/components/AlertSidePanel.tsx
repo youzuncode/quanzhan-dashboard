@@ -1,4 +1,9 @@
 import { useState, useRef } from 'react'
+import { loadJSON, saveJSON } from '../lib/persist'
+
+const LS_DISMISSED = 'alerts.dismissed'
+const LS_CONFIRMED = 'alerts.confirmed'
+const LS_PUSH_HIST = 'alerts.pushHistory'
 import type { PlanData } from '../lib/mockData'
 
 // Dynamically compute alerts from plans (matching HTML _collectAlerts logic)
@@ -117,14 +122,25 @@ interface PushRecord { time: string; summary: string; status: 'ok' | 'err' }
 
 export function AlertSidePanel({ plans, onClose }: Props) {
   const allAlerts = collectAlerts(plans)
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
-  const [confirmed, setConfirmed] = useState<Set<string>>(new Set())
+  const [dismissed, setDismissedRaw] = useState<Set<string>>(() => new Set(loadJSON<string[]>(LS_DISMISSED, [])))
+  const [confirmed, setConfirmedRaw] = useState<Set<string>>(() => new Set(loadJSON<string[]>(LS_CONFIRMED, [])))
   const [showNotifyModal, setShowNotifyModal] = useState(false)
   const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('feishu_webhook') || '')
   const [notifyStatus, setNotifyStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'err'>('idle')
-  const [pushHistory, setPushHistory] = useState<PushRecord[]>([])
+  const [pushHistory, setPushHistoryRaw] = useState<PushRecord[]>(() => loadJSON<PushRecord[]>(LS_PUSH_HIST, []))
   const [showHistory, setShowHistory] = useState(false)
+
+  // Persistent setters — write through to localStorage on every mutation
+  function setDismissed(u: (p: Set<string>) => Set<string>) {
+    setDismissedRaw(prev => { const next = u(prev); saveJSON(LS_DISMISSED, [...next]); return next })
+  }
+  function setConfirmed(u: (p: Set<string>) => Set<string>) {
+    setConfirmedRaw(prev => { const next = u(prev); saveJSON(LS_CONFIRMED, [...next]); return next })
+  }
+  function setPushHistory(u: (p: PushRecord[]) => PushRecord[]) {
+    setPushHistoryRaw(prev => { const next = u(prev); saveJSON(LS_PUSH_HIST, next); return next })
+  }
   const webhookRef = useRef<HTMLInputElement>(null)
 
   async function sendToFeishu() {

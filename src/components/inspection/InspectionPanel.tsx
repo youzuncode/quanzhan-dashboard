@@ -1,6 +1,10 @@
 import { useState, useCallback, useRef } from 'react'
 import { timepoints as defaultTimepoints, MOCK_API_PARAMS } from '../../lib/mockData'
 import type { TimepointResult, Timepoint } from '../../lib/mockData'
+import { loadJSON, saveJSON } from '../../lib/persist'
+
+const LS_STATES = 'inspection.states'
+const LS_API = 'inspection.apiResults'
 
 interface ResultState {
   execStatus: 'executed' | 'confirmed' | 'pending' | 'loading' | 'dismissed' | 'api_error'
@@ -13,10 +17,12 @@ type ResultStates = Record<string, ResultState>
 type ApiResults = Record<string, { status: string; message: string; requestId: string; execTime: string; params: { key: string; before: string; after: string; change: string; dir: string }[] }>
 
 function initStates(timepoints: Timepoint[]): ResultStates {
+  const persisted = loadJSON<ResultStates>(LS_STATES, {})
   const s: ResultStates = {}
   timepoints.forEach(tp => {
     tp.results.forEach(r => {
-      s[r.id] = {
+      // Persisted user actions win over mock defaults — restoration after reload
+      s[r.id] = persisted[r.id] || {
         execStatus: r.initStatus,
         execTime: r.execTime || null,
         operator: r.operator || null,
@@ -46,17 +52,25 @@ interface Props {
 
 export function InspectionPanel({ timepoints = defaultTimepoints }: Props) {
   const [activeIdx, setActiveIdx] = useState(2) // default 14:00
-  const [states, setStates] = useState<ResultStates>(() => initStates(timepoints))
-  const [apiResults, setApiResults] = useState<ApiResults>({})
+  const [states, setStatesRaw] = useState<ResultStates>(() => initStates(timepoints))
+  const [apiResults, setApiResultsRaw] = useState<ApiResults>(() => loadJSON<ApiResults>(LS_API, {}))
+
+  // Persistent setters — write through to localStorage on every mutation
+  const setStates = useCallback((u: (p: ResultStates) => ResultStates) => {
+    setStatesRaw(prev => { const next = u(prev); saveJSON(LS_STATES, next); return next })
+  }, [])
+  const setApiResults = useCallback((u: (p: ApiResults) => ApiResults) => {
+    setApiResultsRaw(prev => { const next = u(prev); saveJSON(LS_API, next); return next })
+  }, [])
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [showNote, setShowNote] = useState<Record<string, boolean>>({})
 
-  // Reset internal state when the store (timepoints) changes
+  // When the store (timepoints) changes, re-init from persisted+defaults.
+  // Per-result-id keys keep different stores' state isolated naturally.
   const prevTpRef = useRef(timepoints)
   if (prevTpRef.current !== timepoints) {
     prevTpRef.current = timepoints
-    setStates(initStates(timepoints))
-    setApiResults({})
+    setStatesRaw(initStates(timepoints))
   }
 
   const now = new Date()

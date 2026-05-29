@@ -1,12 +1,20 @@
 import { useState, useCallback } from 'react'
+import { PersistedMap, loadJSON, saveJSON } from '../lib/persist'
 
-// Module-level caches so state persists when PlanDetail is closed & reopened
-const _triggerStateCache = new Map<string, Record<string, { status: string; operator: string; execTime?: string }>>()
-const _apiResultCache = new Map<string, Record<string, { status: string; message: string; params: { key: string; before: string; after: string; change: string; dir: string }[] }>>()
-const _cmpEnabledCache = new Map<string, { value: boolean }>()
+// Persistent caches so state survives across modal close/open AND full page reloads
+const _triggerStateCache = new PersistedMap<Record<string, { status: string; operator: string; execTime?: string }>>('plandetail.triggerStates')
+const _apiResultCache = new PersistedMap<Record<string, { status: string; message: string; params: { key: string; before: string; after: string; change: string; dir: string }[] }>>('plandetail.apiResults')
 function _getCmpCache(name: string) {
-  if (!_cmpEnabledCache.has(name)) _cmpEnabledCache.set(name, { value: false })
-  return _cmpEnabledCache.get(name)!
+  // Compare-toggle: per-plan boolean, also persisted
+  const all = loadJSON<Record<string, boolean>>('plandetail.cmpEnabled', {})
+  return {
+    get value() { return all[name] ?? false },
+    set value(v: boolean) {
+      const next = loadJSON<Record<string, boolean>>('plandetail.cmpEnabled', {})
+      next[name] = v
+      saveJSON('plandetail.cmpEnabled', next)
+    },
+  }
 }
 import { ArrowLeft } from 'lucide-react'
 import { plans, PLAN_PARAMS, PLAN_TODAY_TRIGGERS, PLAN_HIST_LOG, planErr, MOCK_API_PARAMS, PLAN_DAILY_DATA, PLAN_HOURLY_DATA, enrichRow } from '../lib/mockData'

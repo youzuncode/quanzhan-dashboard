@@ -1,6 +1,9 @@
 import { useState, useRef } from 'react'
 import { generateTodoQueue } from '../../lib/mockData'
 import type { PlanData } from '../../lib/mockData'
+import { loadJSON, saveJSON } from '../../lib/persist'
+
+const LS_DONE = 'todoQueue.done'
 
 interface Props {
   plans: PlanData[]
@@ -16,15 +19,17 @@ const prioStyle: Record<string, { bg: string; color: string; label: string }> = 
 
 export function TodoQueue({ plans, storeConfig, onSelectPlan }: Props) {
   const items = generateTodoQueue(plans, storeConfig)
-  const [done, setDone] = useState<Set<string>>(new Set())
+  // Persist done items globally — ids include plan name + zone, so they're unique across stores
+  const [done, setDoneRaw] = useState<Set<string>>(() => new Set(loadJSON<string[]>(LS_DONE, [])))
   const [collapsed, setCollapsed] = useState(false)
 
-  // Reset checkmarks when store changes
-  const prevRef = useRef(plans)
-  if (prevRef.current !== plans) {
-    prevRef.current = plans
-    setDone(new Set())
+  function setDone(updater: (prev: Set<string>) => Set<string>) {
+    setDoneRaw(prev => { const next = updater(prev); saveJSON(LS_DONE, [...next]); return next })
   }
+
+  // No reset on store change — done items keyed by id stay across stores
+  const prevRef = useRef(plans)
+  if (prevRef.current !== plans) prevRef.current = plans
 
   function toggleDone(id: string, e: React.MouseEvent) {
     e.stopPropagation()
