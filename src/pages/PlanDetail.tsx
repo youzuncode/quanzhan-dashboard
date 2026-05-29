@@ -34,35 +34,43 @@ function computeEffect(hourlyData: HourlyRow[], triggerTime: string) {
   if (!m) return null
   const tH = parseInt(m[1])
   const valid = hourlyData.filter(r => r.febi != null && r.roi != null)
+  // before = 触发前最近 1 小时的有效数据
   const before = [...valid].reverse().find(r => r.h < tH)
-  const after = valid.find(r => r.h >= tH)
-  // 最新非空数据 — 用于"已暂停"类无 after 的场景显示"暂停后无消耗"
+  // after = 触发后(严格大于触发时刻)最近 1 小时的有效数据
+  // 不取 r.h === tH,因为那是触发瞬间本身,不是"操作后效果"
+  const after = valid.find(r => r.h > tH)
+  // 最新非空数据
   const latest = valid[valid.length - 1]
-  if (!before && !after) return null
-  return { before, after, latest, triggerHour: tH }
+  // 衡量"暂停/止损"类规则:触发时刻及之后的零消耗小时数,且后续无新花费
+  const stoppedHours = hourlyData.filter(r => r.h >= tH && r.spend === 0).length
+  const hasPositiveAfter = hourlyData.some(r => r.h > tH && r.spend > 0)
+  return { before, after, latest, triggerHour: tH, stoppedHours, hasPositiveAfter }
 }
 
 interface VerifyProps { hourlyData: HourlyRow[]; triggerTime: string; rule: string }
 function EffectVerify({ hourlyData, triggerTime, rule }: VerifyProps) {
   const e = computeEffect(hourlyData, triggerTime)
   if (!e) return null
-  const { before, after, latest, triggerHour } = e
+  const { before, after, latest, stoppedHours, hasPositiveAfter } = e
 
-  // 若没有 after,但 latest 在 trigger 之后且 spend=0 → 暂停成功(R1-A/R2-B等)
-  if (!after) {
-    const stoppedHours = hourlyData.filter(r => r.h >= triggerHour && r.spend === 0).length
-    if (stoppedHours > 0) {
-      return (
-        <div style={{ marginTop: 8, padding: '8px 10px', background: '#e8f5e9', border: '1px solid #a5d6a7', borderRadius: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#1b5e20', marginBottom: 4 }}>
-            🔍 效果回查 · 暂停生效
-          </div>
-          <div style={{ fontSize: 10.5, color: '#2e7d32' }}>
-            {triggerTime}起连续 {stoppedHours} 小时零消耗,止血成功,等待次日 DT 复查。
-          </div>
+  // 优先判定:暂停/止损类规则
+  // 触发时刻起出现零消耗,且后续没有再产生新花费 → 暂停生效
+  // 适用 R1-A(触发当时h花费>0,之后归零)和 R2-B(维持暂停,触发当时已是0)两种模式
+  if (stoppedHours >= 1 && !hasPositiveAfter) {
+    return (
+      <div style={{ marginTop: 8, padding: '8px 10px', background: '#e8f5e9', border: '1px solid #a5d6a7', borderRadius: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#1b5e20', marginBottom: 4 }}>
+          🔍 效果回查 · 暂停生效
         </div>
-      )
-    }
+        <div style={{ fontSize: 10.5, color: '#2e7d32' }}>
+          {triggerTime} 起连续 {stoppedHours} 小时零消耗,止血成功,等待次日 DT 复查。
+        </div>
+      </div>
+    )
+  }
+
+  // 数据尚未累积
+  if (!after) {
     return (
       <div style={{ marginTop: 8, padding: '8px 10px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 8, fontSize: 10.5, color: '#64748b' }}>
         🔍 效果回查 · 数据待累积,下一小时后可查看 {rule} 实际效果。
