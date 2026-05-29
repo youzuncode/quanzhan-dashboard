@@ -4,90 +4,51 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend,
 } from 'recharts'
-import { plans, PLAN_PARAMS, PLAN_TODAY_TRIGGERS, PLAN_HIST_LOG, planErr, MOCK_API_PARAMS } from '../lib/mockData'
-import type { PlanData, TodayTrigger } from '../lib/mockData'
+import { plans, PLAN_PARAMS, PLAN_TODAY_TRIGGERS, PLAN_HIST_LOG, planErr, MOCK_API_PARAMS, PLAN_DAILY_DATA, PLAN_HOURLY_DATA, enrichRow } from '../lib/mockData'
+import type { TodayTrigger, DailyRow, HourlyRow } from '../lib/mockData'
 
 interface Props { planName: string; onClose: () => void }
 type Tab = 'info' | 'params' | 'today' | 'history' | 'data'
 type DataSub = 'daily' | 'hourly'
 type Agg = 'day' | 'week'
 
-// ── Deterministic RNG ──────────────────────────────────
-function makeRng(seed: string) {
-  let h = 0
-  for (let i = 0; i < seed.length; i++) h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0
-  return (min: number, max: number) => {
-    h = (Math.imul(1664525, h) + 1013904223) | 0
-    return min + ((h >>> 0) / 4294967296) * (max - min)
-  }
-}
+function fmtNum(v: number | null | undefined) { if (v == null) return '—'; return v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toLocaleString() }
 
-// ── Enrich a row with derived metrics ─────────────────
-interface DailyRow {
-  date: string; spend: number; rev: number; roi: number; febi: number
-  orders: number; clicks?: number; ctr?: number; impr?: number
-  cpc?: number; favs?: number; addcart?: number; cvr?: number
-  rule?: string; action?: string; atype?: string; budget?: number
-}
-
-function enrichRow(d: DailyRow, seed: string) {
-  if (d.clicks != null) return d
-  const rng = makeRng(seed)
-  if (d.orders > 0 && d.spend > 0) {
-    const cvr = parseFloat(rng(1.8, 4.5).toFixed(2))
-    const clicks = Math.max(1, Math.round(d.orders / (cvr / 100)))
-    const ctr = parseFloat(rng(0.65, 1.85).toFixed(2))
-    const impr = Math.round(clicks / (ctr / 100))
-    d.cvr = cvr; d.clicks = clicks; d.ctr = ctr; d.impr = impr
-    d.cpc = parseFloat((d.spend / clicks).toFixed(2))
-    d.favs = Math.round(d.orders * rng(0.25, 0.55))
-    d.addcart = Math.round(d.orders * rng(0.85, 1.70))
-  }
-  return d
-}
-
-// ── Generate 30-day daily data ─────────────────────────
-function genDailyData(p: PlanData): DailyRow[] {
-  const rows: DailyRow[] = []
-  const rng = makeRng(p.name + 'daily')
-  for (let i = 0; i < 30; i++) {
-    const dt = new Date(2026, 3, 29); dt.setDate(dt.getDate() + i)
-    const roi = parseFloat((p.roiTarget * (0.84 + rng(0, 0.30))).toFixed(2))
-    const febi = parseFloat((100 / roi).toFixed(1))
-    const spend = Math.round(p.budget * (0.70 + rng(0, 0.48)))
-    const rev = Math.round(spend * roi)
-    const orders = Math.round(spend / 58)
-    const zone = febi > p.gross * 100 ? 'red' : febi > p.gross * 100 - 10 ? 'yellow' : 'green'
-    const row: DailyRow = {
-      date: `${dt.getMonth() + 1}/${dt.getDate()}`, roi, febi, spend, rev, orders,
-      rule: '—', action: '正常运行', atype: zone,
-    }
-    enrichRow(row, p.name + row.date)
-    rows.push(row)
-  }
-  return rows
-}
-
-// ── Generate hourly data (today) ───────────────────────
-function genHourlyData(p: PlanData) {
-  const rng = makeRng(p.name + 'hourly')
-  return [9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(h => {
-    const spend = Math.round(p.budget / 14 * (0.08 + rng(0, 0.05)))
-    const roi = parseFloat((p.roiTarget * (0.88 + rng(0, 0.28))).toFixed(2))
-    const febi = parseFloat((100 / roi).toFixed(1))
-    const zone = febi > p.gross * 100 ? 'red' : febi > p.gross * 100 - 10 ? 'yellow' : 'green'
-    const orders = Math.round(spend / 70)
-    const cvr = parseFloat((1.2 + rng(0, 0.9)).toFixed(2))
-    const clicks = Math.max(1, Math.round(orders / (cvr / 100)))
-    const ctr = parseFloat(rng(0.65, 1.85).toFixed(2))
-    const impr = Math.round(clicks / (ctr / 100))
-    const cpc = parseFloat((spend / clicks).toFixed(2))
-    const threshold = Math.round(spend * 1.2)
-    return { h, spend, rev: Math.round(spend * roi), roi, febi, orders, cvr, clicks, ctr, impr, cpc, threshold, zone, rule: '—', action: '正常运行' }
+// Aggregate rows by week
+function aggByWeek(rows: DailyRow[]): DailyRow[] {
+  const grp: Record<string, DailyRow[]> = {}
+  const order: string[] = []
+  rows.forEach(r => {
+    const [m, d] = r.date.split('/').map(Number)
+    const dt = new Date(2026, m - 1, d)
+    const day = dt.getDay() || 7
+    const mon = new Date(dt); mon.setDate(dt.getDate() - day + 1)
+    const key = `${mon.getMonth() + 1}/${mon.getDate()}`
+    if (!grp[key]) { grp[key] = []; order.push(key) }
+    grp[key].push(r)
+  })
+  return order.map(k => {
+    const rs = grp[k]
+    const sum = (f: keyof DailyRow) => rs.reduce((a, r) => a + ((r[f] as number) || 0), 0)
+    const spend = sum('spend'), rev = sum('rev'), orders = sum('orders')
+    const clicks = sum('clicks'), impr = sum('impr'), favs = sum('favs'), addcart = sum('addcart')
+    const roi = spend > 0 ? parseFloat((rev / spend).toFixed(2)) : null
+    const febi = spend > 0 && rev > 0 ? parseFloat((spend / rev * 100).toFixed(1)) : null
+    const ctr = impr > 0 ? parseFloat((clicks / impr * 100).toFixed(2)) : null
+    const cpc = clicks > 0 ? parseFloat((spend / clicks).toFixed(2)) : null
+    const cvr = clicks > 0 && orders > 0 ? parseFloat((orders / clicks * 100).toFixed(2)) : null
+    const atype = rs.some(r => r.atype === 'red') ? 'red' : rs.some(r => r.atype === 'yellow') ? 'yellow' : 'green'
+    const ruleCnt = rs.filter(r => r.rule && r.rule !== '—').length
+    return {
+      date: `${rs[0].date}~${rs[rs.length - 1].date}`,
+      spend, rev, orders, clicks, impr, favs, addcart, roi, febi, ctr, cpc, cvr,
+      budget: sum('budget'), tRoi: rs[0].tRoi,
+      rule: ruleCnt > 0 ? `${ruleCnt}次触发` : '—',
+      action: ruleCnt > 0 ? `共${ruleCnt}次规则执行` : '无触发',
+      atype, _enriched: true,
+    } as DailyRow
   })
 }
-
-function fmtNum(v: number | undefined) { if (v == null) return '—'; return v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toLocaleString() }
 
 export function PlanDetail({ planName, onClose }: Props) {
   const plan = plans.find(p => p.name === planName)
@@ -123,9 +84,13 @@ export function PlanDetail({ planName, onClose }: Props) {
     return (st?.status || t.status) === 'pending'
   }).length
 
-  const allDailyData = genDailyData(plan)
-  const dailyData = allDailyData.slice(-dateRange)
-  const hourlyData = genHourlyData(plan)
+  // Use real mock data from mockData.ts
+  // Use real mock data from mockData.ts
+  const allDailyRaw: DailyRow[] = PLAN_DAILY_DATA[plan.name] || []
+  const hourlyData: HourlyRow[] = PLAN_HOURLY_DATA[plan.name] || []
+  const allDailyData = allDailyRaw.map(d => enrichRow(d, plan.name + d.date))
+  const dailyDataRaw = allDailyData.slice(-dateRange)
+  const dailyData = agg === 'week' ? aggByWeek(dailyDataRaw) : dailyDataRaw
 
   const maxROI = Math.max(plan.roiTarget * 1.3, targetROI * 1.2)
   const pct = (v: number) => Math.min(100, Math.max(0, v / maxROI * 100)).toFixed(1)
@@ -591,8 +556,8 @@ export function PlanDetail({ planName, onClose }: Props) {
                               <td className="px-2 py-1.5 font-bold whitespace-nowrap">{d.date}</td>
                               <td className="px-2 py-1.5 text-right">¥{d.spend.toLocaleString()}</td>
                               <td className="px-2 py-1.5 text-right">¥{d.rev.toLocaleString()}</td>
-                              <td className={`px-2 py-1.5 text-right font-bold ${d.roi >= targetROI ? 'text-green-700' : d.roi >= stopLossROI ? 'text-yellow-600' : 'text-red-700'}`}>{d.roi}</td>
-                              <td className={`px-2 py-1.5 text-right ${d.febi > stopLossFebi ? 'text-red-700 font-bold' : d.febi > targetFebi ? 'text-yellow-600' : 'text-green-700'}`}>{d.febi}%</td>
+                              <td className={`px-2 py-1.5 text-right font-bold ${d.roi == null ? 'text-gray-400' : d.roi >= targetROI ? 'text-green-700' : d.roi >= stopLossROI ? 'text-yellow-600' : 'text-red-700'}`}>{d.roi ?? '—'}</td>
+                              <td className={`px-2 py-1.5 text-right ${d.febi == null ? 'text-gray-400' : d.febi > stopLossFebi ? 'text-red-700 font-bold' : d.febi > targetFebi ? 'text-yellow-600' : 'text-green-700'}`}>{d.febi != null ? d.febi + '%' : '—'}</td>
                               <td className="px-2 py-1.5 text-right">{d.orders}</td>
                               <td className="px-2 py-1.5 text-right text-gray-500">{d.cvr != null ? d.cvr + '%' : '—'}</td>
                               <td className="px-2 py-1.5 text-right text-gray-500">{d.clicks != null ? d.clicks.toLocaleString() : '—'}</td>
@@ -658,34 +623,40 @@ export function PlanDetail({ planName, onClose }: Props) {
                       </thead>
                       <tbody>
                         {hourlyData.map((d, i) => {
-                          const rowCls = d.zone === 'red' ? 'bg-red-50' : d.zone === 'yellow' ? 'bg-yellow-50' : ''
+                          const at = d.atype
+                          const isPause = at === 'pause'
+                          const rowCls = isPause ? 'bg-gray-100 opacity-60' : at === 'red' ? 'bg-red-50' : at === 'yellow' ? 'bg-yellow-50' : at === 'green' ? 'bg-green-50/20' : ''
                           const overThresh = d.spend > d.threshold
                           const stopLossFebi = plan.gross * 100
                           const targetFebi = plan.gross * 100 - 10
                           return (
                             <tr key={i} className={`border-b border-gray-100 hover:brightness-95 ${rowCls}`}>
                               <td className="px-2 py-1.5 font-bold whitespace-nowrap">{d.h}:00</td>
-                              <td className="px-2 py-1.5 text-right text-gray-500">{fmtNum(d.impr)}</td>
-                              <td className="px-2 py-1.5 text-right text-gray-500">{d.clicks.toLocaleString()}</td>
-                              <td className="px-2 py-1.5 text-right text-gray-500">{d.ctr}%</td>
-                              <td className="px-2 py-1.5 text-right text-gray-500">¥{d.cpc}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500">{isPause ? '—' : fmtNum(d.impr)}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500">{isPause ? '—' : d.clicks != null ? d.clicks.toLocaleString() : '—'}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500">{isPause || d.ctr == null ? '—' : d.ctr + '%'}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500">{isPause || d.cpc == null ? '—' : '¥' + d.cpc}</td>
                               <td className="px-2 py-1.5 text-right font-bold">
-                                ¥{d.spend.toLocaleString()}
-                                {overThresh && <span className="text-red-600 text-xs ml-1">▲超阈</span>}
+                                {d.spend > 0 ? '¥' + d.spend.toLocaleString() : '¥0'}
+                                {overThresh && d.spend > 0 && <span className="text-red-600 text-xs ml-1">▲超阈</span>}
                               </td>
                               <td className="px-2 py-1.5 text-right text-gray-500">¥{d.threshold.toLocaleString()}</td>
-                              <td className="px-2 py-1.5 text-right">¥{d.rev.toLocaleString()}</td>
-                              <td className={`px-2 py-1.5 text-right font-bold ${d.roi > plan.roiTarget ? 'text-green-700' : d.febi > stopLossFebi ? 'text-red-700' : 'text-yellow-600'}`}>{d.roi}</td>
-                              <td className={`px-2 py-1.5 text-right ${d.febi > stopLossFebi ? 'text-red-700 font-bold' : d.febi > targetFebi ? 'text-yellow-600' : 'text-green-700'}`}>{d.febi}%</td>
-                              <td className="px-2 py-1.5 text-right">{d.orders}</td>
-                              <td className="px-2 py-1.5 text-right text-gray-500">{d.cvr}%</td>
-                              <td className="px-2 py-1.5 text-right text-gray-500">{Math.round(d.orders * 0.35)}</td>
-                              <td className="px-2 py-1.5 text-right text-gray-500">{Math.round(d.orders * 1.2)}</td>
-                              <td className="px-2 py-1.5 text-left">
-                                {d.rule !== '—' && (
-                                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded mr-1 ${d.zone === 'red' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{d.rule}</span>
+                              <td className="px-2 py-1.5 text-right">{d.rev != null && d.rev > 0 ? '¥' + d.rev.toLocaleString() : '—'}</td>
+                              <td className={`px-2 py-1.5 text-right font-bold ${d.roi == null ? 'text-gray-400' : d.roi > plan.roiTarget ? 'text-green-700' : d.febi != null && d.febi > stopLossFebi ? 'text-red-700' : 'text-yellow-600'}`}>
+                                {d.roi ?? '—'}
+                              </td>
+                              <td className={`px-2 py-1.5 text-right ${d.febi == null ? 'text-gray-400' : d.febi > stopLossFebi ? 'text-red-700 font-bold' : d.febi > targetFebi ? 'text-yellow-600' : 'text-green-700'}`}>
+                                {d.febi != null ? d.febi + '%' : '—'}
+                              </td>
+                              <td className="px-2 py-1.5 text-right">{d.orders ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500">{d.cvr != null ? d.cvr + '%' : '—'}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500">{d.orders != null ? Math.round(d.orders * 0.35) : '—'}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500">{d.orders != null ? Math.round(d.orders * 1.2) : '—'}</td>
+                              <td className="px-2 py-1.5 text-left min-w-max">
+                                {d.rule && d.rule !== '—' && (
+                                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded mr-1 ${at === 'red' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{d.rule}</span>
                                 )}
-                                <span className={`text-xs px-1.5 py-0.5 rounded ${d.zone === 'red' ? 'bg-red-50 text-red-600 border border-red-200' : d.zone === 'yellow' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${isPause ? 'bg-gray-100 text-gray-400' : at === 'red' ? 'bg-red-50 text-red-600 border border-red-200' : at === 'yellow' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
                                   {d.action}
                                 </span>
                               </td>

@@ -601,6 +601,229 @@ export const RULE_DEFS: RuleDef[] = [
     desc: '每周自动更新计划生命周期标签（培养/成长/成熟/衰退），用增量ROI等边际原则最优分配全店周预算。' },
 ]
 
+// ═══════════════════════════════════════════════════════
+// PLAN DAILY & HOURLY DATA  (直接从 HTML 移植)
+// ═══════════════════════════════════════════════════════
+export interface DailyRow {
+  date: string; spend: number; rev: number; roi: number | null; febi: number | null
+  orders: number | null; budget: number; tRoi: number; rule: string; action: string; atype: string
+  clicks?: number | null; ctr?: number | null; impr?: number | null
+  cpc?: number | null; favs?: number | null; addcart?: number | null; cvr?: number | null
+  _enriched?: boolean
+}
+export interface HourlyRow {
+  h: number; spend: number; rev: number | null; roi: number | null; febi: number | null
+  orders: number | null; cvr: number | null; threshold: number; rule: string; action: string; atype: string
+  clicks?: number | null; ctr?: number | null; impr?: number | null; cpc?: number | null
+}
+
+// Deterministic enrich: derive clicks/ctr/impr/cpc/favs/addcart from spend+orders
+export function enrichRow(d: DailyRow, seedStr: string): DailyRow {
+  if (d._enriched) return d
+  let h = 0
+  for (let i = 0; i < seedStr.length; i++) h = (Math.imul(31, h) + seedStr.charCodeAt(i)) | 0
+  const rng = (min: number, max: number) => { h = (Math.imul(1664525, h) + 1013904223) | 0; return min + ((h >>> 0) / 4294967296) * (max - min) }
+  if (d.orders != null && d.orders > 0 && d.spend > 0) {
+    const cvr = d.cvr != null ? d.cvr : parseFloat(rng(1.8, 4.5).toFixed(2))
+    const clicks = Math.max(1, Math.round(d.orders / (cvr / 100)))
+    const ctr = parseFloat(rng(0.65, 1.85).toFixed(2))
+    d.cvr = cvr; d.clicks = clicks; d.ctr = ctr
+    d.impr = Math.round(clicks / (ctr / 100))
+    d.cpc = parseFloat((d.spend / clicks).toFixed(2))
+    d.favs = Math.round(d.orders * rng(0.25, 0.55))
+    d.addcart = Math.round(d.orders * rng(0.85, 1.70))
+  } else {
+    d.clicks = null; d.ctr = null; d.impr = null; d.cpc = null; d.favs = null; d.addcart = null
+  }
+  d._enriched = true
+  return d
+}
+
+// Deterministic row generator (same algorithm as HTML _genDailyRow)
+function genDailyRow(p: PlanData, dt: Date): DailyRow {
+  const m = dt.getMonth() + 1, day = dt.getDate()
+  let h = (p.roiTarget * 100 | 0) * 10000 + (m * 100 + day)
+  const rng = (mn: number, mx: number) => { h = (Math.imul(1664525, h) + 1013904223) | 0; return mn + ((h >>> 0) / 4294967296) * (mx - mn) }
+  const roi = parseFloat((p.roiTarget * (0.84 + rng(0, 0.30))).toFixed(2))
+  const febi = parseFloat((100 / roi).toFixed(1))
+  const spend = Math.round(p.budget * (0.70 + rng(0, 0.48)))
+  const zone = febi > p.gross * 100 ? 'red' : febi > (p.gross * 100 - 10) ? 'yellow' : 'green'
+  const rule = zone === 'red' ? 'R2-C' : zone === 'yellow' && (m + day) % 4 === 0 ? 'DT1' : zone === 'green' && (m + day) % 3 === 0 ? 'R3' : '—'
+  const atype = rule === '—' ? '' : zone
+  return {
+    date: `${m}/${day}`, spend, rev: Math.round(spend * roi), roi, febi,
+    orders: Math.round(spend / 58), budget: p.budget, tRoi: p.roiTarget, rule,
+    action: rule === 'R3' ? '预算+15%' : rule === 'DT1' ? 'ROI上调8%|预算×0.90' : rule === 'R2-C' ? 'ROI+10%|剩余×0.80' : '无触发',
+    atype,
+  }
+}
+
+function genAndEnrich30(p: PlanData, explicit: DailyRow[] = []): DailyRow[] {
+  const explicitSet = new Set(explicit.map(d => d.date))
+  const base = new Date(2026, 3, 29) // April 29
+  const rows: DailyRow[] = []
+  for (let i = 0; i < 30; i++) {
+    const dt = new Date(base); dt.setDate(dt.getDate() + i)
+    const dateStr = `${dt.getMonth() + 1}/${dt.getDate()}`
+    if (!explicitSet.has(dateStr)) rows.push(genDailyRow(p, dt))
+  }
+  const all = [...rows, ...explicit].sort((a, b) => {
+    const [am, ad] = a.date.split('/').map(Number)
+    const [bm, bd] = b.date.split('/').map(Number)
+    return (am * 100 + ad) - (bm * 100 + bd)
+  })
+  all.forEach(d => enrichRow(d, d.date + (d.spend || 0)))
+  return all
+}
+
+// ── 施华蔻养发精华液 ──────────────────────────────────
+const _shCDaily: DailyRow[] = [
+  { date: '05/15', spend: 6200,  rev: 21700, roi: 3.50, febi: 28.6, orders: 142, budget: 6000,  tRoi: 3.5,  rule: 'R3',      action: '预算¥6000→¥6900 +15%',              atype: 'green' },
+  { date: '05/16', spend: 6900,  rev: 25530, roi: 3.70, febi: 27.0, orders: 168, budget: 7000,  tRoi: 3.5,  rule: 'DT3',     action: '明日预算×1.20',                      atype: 'green' },
+  { date: '05/17', spend: 7200,  rev: 26640, roi: 3.70, febi: 27.0, orders: 175, budget: 7000,  tRoi: 3.8,  rule: 'R3',      action: '预算+15%',                           atype: 'green' },
+  { date: '05/18', spend: 5200,  rev: 16120, roi: 3.10, febi: 32.3, orders: 122, budget: 5200,  tRoi: 3.8,  rule: '—',      action: '无触发',                              atype: '' },
+  { date: '05/19', spend: 5800,  rev: 16820, roi: 2.90, febi: 34.5, orders: 134, budget: 5800,  tRoi: 3.8,  rule: 'R2-C',   action: 'ROI 3.5→3.85 | 剩余×0.80',          atype: 'yellow' },
+  { date: '05/20', spend: 6100,  rev: 19091, roi: 3.13, febi: 31.9, orders: 148, budget: 6100,  tRoi: 3.85, rule: 'R2-B',   action: 'ROI→3.13止损 | 预算×0.60',           atype: 'red' },
+  { date: '05/21', spend: 4200,  rev: 15960, roi: 3.80, febi: 26.3, orders: 118, budget: 4200,  tRoi: 3.85, rule: 'DT1',    action: 'ROI 3.8→4.10 | 明日预算×0.90',       atype: 'yellow' },
+  { date: '05/22', spend: 5400,  rev: 20520, roi: 3.80, febi: 26.3, orders: 156, budget: 5400,  tRoi: 4.10, rule: 'R3',     action: '预算+15%',                           atype: 'green' },
+  { date: '05/23', spend: 5800,  rev: 18560, roi: 3.20, febi: 31.3, orders: 142, budget: 6000,  tRoi: 4.10, rule: '—',      action: '无触发',                             atype: '' },
+  { date: '05/24', spend: 6200,  rev: 24180, roi: 3.90, febi: 25.6, orders: 168, budget: 6200,  tRoi: 4.10, rule: 'DT3',    action: '明日预算×1.20',                      atype: 'green' },
+  { date: '05/25', spend: 7800,  rev: 30420, roi: 3.90, febi: 25.6, orders: 198, budget: 8000,  tRoi: 4.10, rule: 'R3',     action: '预算+15%',                           atype: 'green' },
+  { date: '05/26', spend: 8100,  rev: 29160, roi: 3.60, febi: 27.8, orders: 178, budget: 8000,  tRoi: 4.20, rule: 'R2-C',   action: 'ROI 4.0→4.4 | 剩余×0.80',           atype: 'yellow' },
+  { date: '05/27', spend: 9200,  rev: 38640, roi: 4.20, febi: 23.8, orders: 201, budget: 9000,  tRoi: 4.20, rule: 'DT1',    action: 'ROI 4.2→4.54 | 明日预算→¥8100',      atype: 'yellow' },
+  { date: '05/28', spend: 8400,  rev: 22050, roi: 2.63, febi: 38.1, orders: 156, budget: 8400,  tRoi: 4.54, rule: 'R1-A+R2-B', action: '暂停计划(预算→¥0) | ROI止损→3.45', atype: 'red' },
+]
+
+// ── UNO男士控油乳液 ───────────────────────────────────
+const _unoCDaily: DailyRow[] = [
+  { date: '05/15', spend: 380,  rev: 1672,  roi: 4.40, febi: 22.7, orders: 28, budget: 400,  tRoi: 4.5,  rule: 'R3',      action: '预算¥400→¥480 +20%',              atype: 'green' },
+  { date: '05/16', spend: 420,  rev: 1890,  roi: 4.50, febi: 22.2, orders: 32, budget: 480,  tRoi: 4.5,  rule: '—',      action: '无触发',                          atype: '' },
+  { date: '05/17', spend: 480,  rev: 2016,  roi: 4.20, febi: 23.8, orders: 35, budget: 480,  tRoi: 4.5,  rule: '—',      action: '无触发',                          atype: '' },
+  { date: '05/18', spend: 460,  rev: 2162,  roi: 4.70, febi: 21.3, orders: 36, budget: 500,  tRoi: 4.5,  rule: 'DT3',    action: '明日预算×1.20',                   atype: 'green' },
+  { date: '05/19', spend: 500,  rev: 2000,  roi: 4.00, febi: 25.0, orders: 34, budget: 500,  tRoi: 4.5,  rule: '—',      action: '无触发',                          atype: '' },
+  { date: '05/20', spend: 480,  rev: 2016,  roi: 4.20, febi: 23.8, orders: 33, budget: 500,  tRoi: 4.5,  rule: 'R1-B',   action: 'ROI 4.0→4.60(×1.15) | 剩余×0.80', atype: 'yellow' },
+  { date: '05/21', spend: 420,  rev: 1764,  roi: 4.20, febi: 23.8, orders: 30, budget: 420,  tRoi: 4.60, rule: '—',      action: '无触发',                          atype: '' },
+  { date: '05/22', spend: 440,  rev: 1716,  roi: 3.90, febi: 25.6, orders: 28, budget: 500,  tRoi: 4.60, rule: 'R2-C',   action: 'ROI 4.2→4.62 | 剩余×0.80',       atype: 'yellow' },
+  { date: '05/23', spend: 480,  rev: 1872,  roi: 3.90, febi: 25.6, orders: 30, budget: 500,  tRoi: 4.62, rule: 'DT1',    action: 'ROI 4.5→4.86 | 明日预算×0.90',    atype: 'yellow' },
+  { date: '05/24', spend: 460,  rev: 1656,  roi: 3.60, febi: 27.8, orders: 27, budget: 500,  tRoi: 4.86, rule: '—',      action: '无触发',                          atype: '' },
+  { date: '05/25', spend: 490,  rev: 1666,  roi: 3.40, febi: 29.4, orders: 26, budget: 500,  tRoi: 4.86, rule: '—',      action: '无触发',                          atype: '' },
+  { date: '05/26', spend: 500,  rev: 1700,  roi: 3.40, febi: 29.4, orders: 25, budget: 500,  tRoi: 4.86, rule: 'R2-C',   action: 'ROI 4.8→5.28 | 剩余×0.80',       atype: 'yellow' },
+  { date: '05/27', spend: 490,  rev: 1666,  roi: 3.40, febi: 29.4, orders: 24, budget: 500,  tRoi: 5.28, rule: 'DT1',    action: 'ROI 5.0→5.40 | 明日预算×0.90',    atype: 'yellow' },
+  { date: '05/28', spend: 420,  rev: 1234,  roi: 2.94, febi: 34.1, orders: 18, budget: 500,  tRoi: 5.50, rule: 'R2-B待确认', action: 'ROI:5.5→3.44止损 | 剩余×0.60 ⏳待确认', atype: 'red' },
+]
+
+// ── 海飞丝去屑洗发水 ──────────────────────────────────
+const _hfsCDaily: DailyRow[] = [
+  { date: '05/15', spend: 7800,  rev: 35100, roi: 4.50, febi: 22.2, orders: 285, budget: 8000,  tRoi: 4.5,  rule: 'DT1',  action: 'ROI 4.5→4.86 | 明日预算×0.90',     atype: 'yellow' },
+  { date: '05/16', spend: 7200,  rev: 32760, roi: 4.55, febi: 22.0, orders: 265, budget: 7200,  tRoi: 4.86, rule: '—',   action: '无触发',                            atype: '' },
+  { date: '05/17', spend: 7500,  rev: 37500, roi: 5.00, febi: 20.0, orders: 298, budget: 8000,  tRoi: 4.86, rule: 'R3',  action: '预算+15%',                          atype: 'green' },
+  { date: '05/18', spend: 8800,  rev: 40480, roi: 4.60, febi: 21.7, orders: 312, budget: 9000,  tRoi: 4.86, rule: '—',   action: '无触发',                            atype: '' },
+  { date: '05/19', spend: 9400,  rev: 47000, roi: 5.00, febi: 20.0, orders: 358, budget: 9400,  tRoi: 4.86, rule: 'DT3', action: '明日预算×1.20',                     atype: 'green' },
+  { date: '05/20', spend: 9800,  rev: 42140, roi: 4.30, febi: 23.3, orders: 325, budget: 10000, tRoi: 4.86, rule: 'R2-C',action: 'ROI 4.6→5.06 | 剩余×0.80',         atype: 'yellow' },
+  { date: '05/21', spend: 8200,  rev: 38540, roi: 4.70, febi: 21.3, orders: 302, budget: 8500,  tRoi: 5.06, rule: '—',   action: '无触发',                            atype: '' },
+  { date: '05/22', spend: 8500,  rev: 40375, roi: 4.75, febi: 21.1, orders: 315, budget: 8500,  tRoi: 5.06, rule: 'R3',  action: '预算+15%',                          atype: 'green' },
+  { date: '05/23', spend: 9200,  rev: 37720, roi: 4.10, febi: 24.4, orders: 298, budget: 9200,  tRoi: 5.06, rule: '—',   action: '无触发',                            atype: '' },
+  { date: '05/24', spend: 9800,  rev: 44100, roi: 4.50, febi: 22.2, orders: 338, budget: 10000, tRoi: 5.06, rule: 'DT1', action: 'ROI 4.8→5.18 | 明日预算×0.90',      atype: 'yellow' },
+  { date: '05/25', spend: 9200,  rev: 49680, roi: 5.40, febi: 18.5, orders: 385, budget: 9000,  tRoi: 5.18, rule: 'R3',  action: '预算+15%',                          atype: 'green' },
+  { date: '05/26', spend: 10200, rev: 44880, roi: 4.40, febi: 22.7, orders: 352, budget: 10000, tRoi: 5.18, rule: 'DT3', action: '明日预算¥10000→¥12000 +20%',        atype: 'green' },
+  { date: '05/27', spend: 12100, rev: 52030, roi: 4.30, febi: 23.3, orders: 395, budget: 11000, tRoi: 5.18, rule: 'R3',  action: '预算¥11000→¥12650 +15%',            atype: 'green' },
+  { date: '05/28', spend: 12100, rev: 31460, roi: 2.60, febi: 26.0, orders: 245, budget: 12650, tRoi: 5.20, rule: 'DT1预执行', action: 'ROI:5.2→5.62（人工预执行） | 明日预算→¥4500', atype: 'yellow' },
+]
+
+// ── 清扬男士洗发水 ────────────────────────────────────
+const _qyCDaily: DailyRow[] = [
+  { date: '05/15', spend: 1450, rev: 9280,  roi: 6.40, febi: 15.6, orders: 96,  budget: 1500, tRoi: 6.5, rule: 'R3',  action: '预算¥1400→¥1610 +15%',      atype: 'green' },
+  { date: '05/16', spend: 1580, rev: 11218, roi: 7.10, febi: 14.1, orders: 112, budget: 1600, tRoi: 6.5, rule: 'DT3', action: '明日预算×1.20',              atype: 'green' },
+  { date: '05/17', spend: 1720, rev: 12040, roi: 7.00, febi: 14.3, orders: 118, budget: 1700, tRoi: 6.8, rule: 'R3',  action: '预算+15%',                   atype: 'green' },
+  { date: '05/18', spend: 1650, rev: 11220, roi: 6.80, febi: 14.7, orders: 108, budget: 1700, tRoi: 6.8, rule: '—',  action: '无触发',                      atype: '' },
+  { date: '05/19', spend: 1600, rev: 11840, roi: 7.40, febi: 13.5, orders: 115, budget: 1600, tRoi: 6.8, rule: 'R3',  action: '预算+15%',                   atype: 'green' },
+  { date: '05/20', spend: 1840, rev: 13800, roi: 7.50, febi: 13.3, orders: 128, budget: 1900, tRoi: 6.8, rule: 'DT3', action: '明日预算×1.20',              atype: 'green' },
+  { date: '05/21', spend: 1820, rev: 14196, roi: 7.80, febi: 12.8, orders: 135, budget: 2000, tRoi: 7.0, rule: 'R3',  action: '预算+15%',                   atype: 'green' },
+  { date: '05/22', spend: 2000, rev: 15400, roi: 7.70, febi: 13.0, orders: 145, budget: 2000, tRoi: 7.0, rule: '—',  action: '无触发',                      atype: '' },
+  { date: '05/23', spend: 2000, rev: 15200, roi: 7.60, febi: 13.2, orders: 140, budget: 2000, tRoi: 7.0, rule: 'R3',  action: '预算+15%',                   atype: 'green' },
+  { date: '05/24', spend: 2300, rev: 17480, roi: 7.60, febi: 13.2, orders: 158, budget: 2400, tRoi: 7.0, rule: 'DT3', action: '明日预算×1.20',              atype: 'green' },
+  { date: '05/25', spend: 2400, rev: 19200, roi: 8.00, febi: 12.5, orders: 172, budget: 2500, tRoi: 7.0, rule: 'R3',  action: '预算+15%',                   atype: 'green' },
+  { date: '05/26', spend: 2500, rev: 19500, roi: 7.80, febi: 12.8, orders: 168, budget: 2500, tRoi: 7.0, rule: '—',  action: '无触发',                      atype: '' },
+  { date: '05/27', spend: 2700, rev: 21600, roi: 8.00, febi: 12.5, orders: 180, budget: 2700, tRoi: 7.0, rule: 'DT3', action: '明日预算¥2700→¥3240 +20%',  atype: 'green' },
+  { date: '05/28', spend: 9300, rev: 65100, roi: 7.00, febi: 14.3, orders: 158, budget: 3000, tRoi: 7.0, rule: 'R3待执行', action: '预算¥3000→¥3450 +15%（16:00执行）', atype: 'green' },
+]
+
+// Build PLAN_DAILY_DATA: explicit plans extended to 30 days, others generated
+export const PLAN_DAILY_DATA: Record<string, DailyRow[]> = {}
+
+const _explicitPlans: Record<string, DailyRow[]> = {
+  '施华蔻养发精华液': _shCDaily,
+  'UNO男士控油乳液': _unoCDaily,
+  '海飞丝去屑洗发水': _hfsCDaily,
+  '清扬男士洗发水': _qyCDaily,
+}
+
+plans.forEach(p => {
+  const explicit = _explicitPlans[p.name] || []
+  PLAN_DAILY_DATA[p.name] = genAndEnrich30(p, explicit)
+})
+
+// ── Hourly data (今日分时) ─────────────────────────────
+export const PLAN_HOURLY_DATA: Record<string, HourlyRow[]> = {
+  '施华蔻养发精华液': [
+    { h: 9,  spend: 1240, rev: 2046, roi: 1.65, febi: 60.6, orders: 12, cvr: 1.35, threshold: 892,  rule: 'R1-A',      action: '小时花费超阈值+零成交→暂停计划',                 atype: 'red' },
+    { h: 10, spend: 0,    rev: 0,    roi: null,  febi: null, orders: 0,  cvr: null,  threshold: 920,  rule: '—',        action: '已暂停（R1-A执行中）',                         atype: 'pause' },
+    { h: 11, spend: 0,    rev: 0,    roi: null,  febi: null, orders: 0,  cvr: null,  threshold: 905,  rule: '—',        action: '已暂停',                                       atype: 'pause' },
+    { h: 12, spend: 0,    rev: 0,    roi: null,  febi: null, orders: 0,  cvr: null,  threshold: 898,  rule: '—',        action: '已暂停',                                       atype: 'pause' },
+    { h: 13, spend: 0,    rev: 0,    roi: null,  febi: null, orders: 0,  cvr: null,  threshold: 912,  rule: '—',        action: '已暂停',                                       atype: 'pause' },
+    { h: 14, spend: 0,    rev: 0,    roi: null,  febi: null, orders: 0,  cvr: null,  threshold: 925,  rule: 'R2-B',     action: '14:00确认：维持暂停 | ROI目标→3.45（止损×1.1）', atype: 'red' },
+  ],
+  'UNO男士控油乳液': [
+    { h: 9,  spend: 52,  rev: 156,  roi: 3.00, febi: 33.3, orders: 2, cvr: 0.71, threshold: 68, rule: '—',           action: '监控中，费比偏高',                              atype: 'yellow' },
+    { h: 10, spend: 61,  rev: 172,  roi: 2.82, febi: 35.5, orders: 2, cvr: 0.65, threshold: 72, rule: '—',           action: '费比持续升高',                                 atype: 'yellow' },
+    { h: 11, spend: 58,  rev: 162,  roi: 2.79, febi: 35.8, orders: 2, cvr: 0.68, threshold: 70, rule: '—',           action: '监控中',                                       atype: 'yellow' },
+    { h: 12, spend: 72,  rev: 194,  roi: 2.69, febi: 37.1, orders: 2, cvr: 0.56, threshold: 74, rule: 'R2-B预警',    action: '费比32.1%逼近Gross止损线，推送预警',             atype: 'red' },
+    { h: 13, spend: 65,  rev: 182,  roi: 2.80, febi: 35.7, orders: 2, cvr: 0.61, threshold: 72, rule: '—',           action: '等待中置信度确认',                             atype: 'yellow' },
+    { h: 14, spend: 112, rev: 291,  roi: 2.60, febi: 38.5, orders: 3, cvr: 0.58, threshold: 76, rule: 'R2-B待确认', action: '费比34.1%>Gross32%，待人工确认执行止损',         atype: 'red' },
+  ],
+  '海飞丝去屑洗发水': [
+    { h: 9,  spend: 980,  rev: 3920, roi: 4.00, febi: 25.0, orders: 28, cvr: 0.74, threshold: 1050, rule: '—',             action: '正常运行',                                     atype: 'green' },
+    { h: 10, spend: 1120, rev: 4816, roi: 4.30, febi: 23.3, orders: 34, cvr: 0.81, threshold: 1080, rule: '—',             action: '正常运行',                                     atype: 'green' },
+    { h: 11, spend: 1050, rev: 4410, roi: 4.20, febi: 23.8, orders: 32, cvr: 0.80, threshold: 1060, rule: '—',             action: '正常运行',                                     atype: 'green' },
+    { h: 12, spend: 1380, rev: 4554, roi: 3.30, febi: 30.3, orders: 38, cvr: 0.79, threshold: 1100, rule: 'DT1触发→预执行', action: '费比超目标趋势上升，12:15人工预执行DT1：ROI:5.2→5.62', atype: 'yellow' },
+    { h: 13, spend: 1240, rev: 4464, roi: 3.60, febi: 27.8, orders: 35, cvr: 0.80, threshold: 1090, rule: '—',             action: '已执行DT1，观察中',                            atype: 'yellow' },
+    { h: 14, spend: 7330, rev: null, roi: null,  febi: null, orders: null, cvr: null, threshold: 1120, rule: '—',           action: '截至14:00累计数据',                            atype: '' },
+  ],
+  '清扬男士洗发水': [
+    { h: 9,  spend: 720,  rev: 5040, roi: 7.00, febi: 14.3, orders: 62,   cvr: 1.94, threshold: 780, rule: '—',      action: '正常运行',                           atype: 'green' },
+    { h: 10, spend: 840,  rev: 6048, roi: 7.20, febi: 13.9, orders: 72,   cvr: 2.00, threshold: 800, rule: '—',      action: '正常运行',                           atype: 'green' },
+    { h: 11, spend: 780,  rev: 5460, roi: 7.00, febi: 14.3, orders: 65,   cvr: 1.91, threshold: 790, rule: '—',      action: '正常运行',                           atype: 'green' },
+    { h: 12, spend: 920,  rev: 6624, roi: 7.20, febi: 13.9, orders: 78,   cvr: 2.00, threshold: 820, rule: '—',      action: '正常运行',                           atype: 'green' },
+    { h: 13, spend: 860,  rev: 6020, roi: 7.00, febi: 14.3, orders: 70,   cvr: 1.89, threshold: 810, rule: '—',      action: '正常运行',                           atype: 'green' },
+    { h: 14, spend: 5180, rev: null, roi: null,  febi: null, orders: null, cvr: null, threshold: 840, rule: 'R3预检', action: '16:00将执行R3预算追加：¥3000→¥3450', atype: 'green' },
+  ],
+}
+
+// Generate hourly for remaining plans (deterministic)
+function genHourlyForPlan(p: PlanData): HourlyRow[] {
+  let h = (p.roiTarget * 100 | 0) * 777 + 12345
+  const rng = (mn: number, mx: number) => { h = (Math.imul(1664525, h) + 1013904223) | 0; return mn + ((h >>> 0) / 4294967296) * (mx - mn) }
+  return [9, 10, 11, 12, 13, 14].map(hour => {
+    const spend = Math.round(p.budget / 14 * (0.08 + rng(0, 0.05)))
+    const roi = parseFloat((p.roiTarget * (0.88 + rng(0, 0.28))).toFixed(2))
+    const febi = parseFloat((100 / roi).toFixed(1))
+    const zone = febi > p.gross * 100 ? 'red' : febi > (p.gross * 100 - 10) ? 'yellow' : 'green'
+    const orders = Math.round(spend / 70)
+    const cvr = parseFloat((1.2 + rng(0, 0.9)).toFixed(2))
+    return {
+      h: hour, spend, rev: Math.round(spend * roi), roi, febi, orders, cvr,
+      threshold: Math.round(spend * 1.2), rule: '—', action: '正常运行', atype: zone,
+    }
+  })
+}
+
+;['潘婷修护发膜', 'VS沙宣护发素', '力士香薰沐浴露', '多芬身体乳', '飘柔柔顺洗发水', '舒肤佳抑菌香皂'].forEach(name => {
+  if (!PLAN_HOURLY_DATA[name]) {
+    const p = plans.find(pl => pl.name === name)
+    if (p) PLAN_HOURLY_DATA[name] = genHourlyForPlan(p)
+  }
+})
+
 // Alert items for side panel
 export interface SidePanelAlert {
   id: string; plan: string; rule: string; zone: 'red' | 'yellow' | 'green'; deadline: string
