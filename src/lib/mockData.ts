@@ -940,6 +940,186 @@ export function generateActionLog(storePlans: PlanData[]): ActionLogEntry[] {
   return log
 }
 
+// ── Per-store derived data generators ──────────────────
+// All deterministic: same plans → same output.
+function _seedFromPlans(plans: PlanData[]): () => number {
+  let seed = plans.reduce((s, p) => s + p.name.length * 13 + Math.round(p.febi * 1000), 7)
+  return () => { seed = (seed * 1664525 + 1013904223) & 0x7fffffff; return seed / 0x7fffffff }
+}
+function _zoneOf(p: PlanData): 'red' | 'yellow' | 'green' {
+  const sl = p.gross, pt = p.gross - 0.1
+  return p.febi > sl ? 'red' : p.febi > pt ? 'yellow' : 'green'
+}
+
+// 今日参数操作指令
+export function generateParamOps(plans: PlanData[]): ParamOp[] {
+  const roiItems = plans
+    .filter(p => p.rule && p.rule !== '—' && (_zoneOf(p) === 'red' || p.rule.includes('DT1')))
+    .slice(0, 3)
+    .map(p => {
+      const red = _zoneOf(p) === 'red'
+      const nw = red ? (1 / p.gross * 1.1).toFixed(2) : (p.roiTarget * 1.08).toFixed(2)
+      return { plan: p.name, cur: String(p.roiTarget), nw, badge: p.rule.includes('待确认') ? '止损待确认' : red ? '止损×1.1' : 'DT1预执行' }
+    })
+  const bgtItems = plans
+    .filter(p => _zoneOf(p) === 'green' && (p.rule.includes('R3') || p.guard))
+    .slice(0, 3)
+    .map((p, i) => {
+      const pct = [15, 20, 25][i % 3]
+      return { plan: `${p.name} R3追加`, cur: `¥${p.budget.toLocaleString()}`, nw: `¥${Math.round(p.budget * (1 + pct / 100)).toLocaleString()}`, badge: `+${pct}%` }
+    })
+  const greenGuard = plans.filter(p => _zoneOf(p) === 'green' && p.guard).length
+  const redGuard = plans.filter(p => _zoneOf(p) === 'red').length
+  return [
+    { name: '净目标投产比', icon: '🎯', type: 'roi', cls: 'act', items: roiItems.length ? roiItems : [{ plan: '全部计划', cur: '—', nw: '维持', badge: '无需调整' }] },
+    { name: '每日预算', icon: '💰', type: 'bgt', cls: 'ok', items: bgtItems.length ? bgtItems : [{ plan: '全部计划', cur: '—', nw: '维持', badge: '无追加' }] },
+    { name: '出价方式', icon: '⚡', type: 'mode', cls: 'warn', items: [
+      { plan: '全部计划', cur: '控投产比', nw: '维持', badge: '默认' },
+      { plan: '大促绿区场景', cur: '—', nw: '可切换最大化拿量', badge: '特殊场景' },
+    ]},
+    { name: '防停投开关', icon: '🛡', type: 'guard', cls: 'ok', items: [
+      { plan: `绿区${greenGuard}计划`, cur: '—', nw: '✅ 开启', badge: '防断货' },
+      { plan: `红区${redGuard}计划`, cur: '—', nw: '❌ 关闭', badge: '强制关闭' },
+    ]},
+  ]
+}
+
+// 主要问题
+export function generateProblems(plans: PlanData[], cfg: typeof store): AlertItem[] {
+  const out: AlertItem[] = []
+  plans.filter(p => _zoneOf(p) === 'red').slice(0, 3).forEach(p => {
+    const gap = ((p.febi - p.gross) * 100).toFixed(1)
+    out.push({
+      level: 'red', title: `${p.name} · ${p.rule.includes('待确认') ? '红区待确认' : '真实亏损（R2-B）'}`, tag: '红区',
+      detail: `费比${(p.febi * 100).toFixed(0)}% > Gross${(p.gross * 100).toFixed(0)}%，亏损${gap}pp。${p.budget === 0 ? '已暂停。' : '待14:00确认止损。'}`,
+      action: `ROI→${(1 / p.gross * 1.1).toFixed(2)} | ${p.budget === 0 ? '今日预算→¥0' : '剩余×0.60'} | 防停投关闭`,
+    })
+  })
+  plans.filter(p => _zoneOf(p) === 'yellow' && p.rule && p.rule !== '—').slice(0, 1).forEach(p => {
+    out.push({
+      level: 'yellow', title: `${p.name} · ${p.rule}`, tag: '黄区',
+      detail: `费比${(p.febi * 100).toFixed(0)}% > 目标${((p.gross - 0.1) * 100).toFixed(0)}%，已进入黄区预警。`,
+      action: p.action.split('\n')[0] || 'ROI上调 | 明日预算压缩',
+    })
+  })
+  if (cfg.storeMarginGap < 0) {
+    out.push({
+      level: 'yellow', title: `全店毛利余量${(cfg.storeMarginGap * 100).toFixed(1)}% · 收紧模式`, tag: '店铺',
+      detail: `本周净毛利率${(cfg.weeklyNetProfit * 100).toFixed(1)}% < 目标${(cfg.weeklyTarget * 100).toFixed(0)}%。黄区禁扩量，绿区ROI≥130%才扩。`,
+      action: '18:00黄区ROI强制上调10% | 禁入晚高峰',
+    })
+  }
+  return out
+}
+
+// 机会点
+export function generateOpps(plans: PlanData[]): AlertItem[] {
+  return plans
+    .filter(p => _zoneOf(p) === 'green' && p.conf === 'H')
+    .sort((a, b) => b.roiTarget - a.roiTarget)
+    .slice(0, 3)
+    .map((p, i) => {
+      const pct = [25, 20, 15][i % 3]
+      const margin = ((p.gross - 0.1 - p.febi) * 100).toFixed(0)
+      return {
+        level: 'green' as const, title: `${p.name} · ${i === 0 ? 'ROI最优' : '稳定绿区'}`, tag: '绿区',
+        detail: `ROI=${p.roiTarget}，费比${(p.febi * 100).toFixed(0)}% vs 目标${((p.gross - 0.1) * 100).toFixed(0)}%，余量${margin}pp。置信度H。`,
+        action: `今日预算: ¥${p.budget.toLocaleString()}→¥${Math.round(p.budget * (1 + pct / 100)).toLocaleString()}（+${pct}%）| ROI维持${p.roiTarget}`,
+      }
+    })
+}
+
+// 算法调整方向
+export function generateAlgo(plans: PlanData[], cfg: typeof store): AlgoItem[] {
+  const out: AlgoItem[] = []
+  const lowConf = plans.filter(p => p.conf === 'L')
+  if (lowConf.length) {
+    out.push({
+      title: `📉 ${lowConf.map(p => p.name).slice(0, 2).join('/')}预测误差偏高→置信度L`,
+      detail: `过去14天误差均值超20%阈值，已降至L级。自动操作暂停，需人工操作。`,
+      formula: '置信度L → R1-B/R3禁止自动执行',
+    })
+  }
+  out.push({
+    title: '⚖️ R1动态阈值自适应',
+    detail: '近7天花费均值上移，R1阈值自动上调，避免正常备货流量被误触发。',
+    formula: 'threshold = rolling_mean(28d) + 2×rolling_std(28d)',
+  })
+  const redBudget = plans.filter(p => _zoneOf(p) === 'red').reduce((s, p) => s + p.spend * 0.4, 0)
+  if (redBudget > 0) {
+    const greens = plans.filter(p => _zoneOf(p) === 'green' && p.conf === 'H').map(p => p.name).slice(0, 3)
+    out.push({
+      title: '🎯 增量ROI分糖：红区释放→绿区',
+      detail: `红区释放预算约¥${Math.round(redBudget).toLocaleString()}/天，按边际原则分给${greens.join('/')}。`,
+      formula: `b_i* : MR(${greens.join(')=MR(')})`,
+    })
+  }
+  out.push({
+    title: `🏷️ 全店毛利余量${(cfg.storeMarginGap * 100).toFixed(1)}%`,
+    detail: cfg.storeMarginGap < 0 ? '余量告负，整体收紧出价竞争力，优先保绿区。' : '余量为正，可适度放量绿区计划。',
+    formula: cfg.storeMarginGap < 0 ? '模式 = 收紧（黄区禁扩量）' : '模式 = 宽松（绿区可追量）',
+  })
+  return out
+}
+
+// 各计划预测误差（ChartPanel hist14 表）
+export function generatePlanErr(plans: PlanData[]): PlanErrRow[] {
+  const rng = _seedFromPlans(plans)
+  return plans.map(p => {
+    const base = p.conf === 'H' ? 8 + rng() * 7 : p.conf === 'M' ? 15 + rng() * 8 : 25 + rng() * 8
+    const mape = +base.toFixed(1)
+    const trend: PlanErrRow['trend'] = p.conf === 'H' ? (rng() > 0.5 ? 'imp' : 'stb') : p.conf === 'L' ? 'deg' : (rng() > 0.6 ? 'deg' : 'stb')
+    const high = rng() > 0.5
+    const amt = (rng() * (p.conf === 'L' ? 20 : 8) + 2).toFixed(1)
+    return { name: p.name, mape, conf: p.conf, trend, bias: high ? '偏高' : '偏低', biasAmt: (high ? '+' : '-') + amt + '%' }
+  })
+}
+
+// 日内7时点巡检（按 plans 生成）
+export function generateTimepoints(plans: PlanData[]): Timepoint[] {
+  const meta: { time: string; name: string; conf: 'H' | 'M' | 'L' }[] = [
+    { time: '09:00', name: '晨检', conf: 'H' }, { time: '12:00', name: '午检', conf: 'L' },
+    { time: '14:00', name: '午后检', conf: 'M' }, { time: '16:00', name: '下午检', conf: 'H' },
+    { time: '18:00', name: '晚高峰前', conf: 'H' }, { time: '20:00', name: '夜间检', conf: 'H' },
+    { time: '22:00', name: '次日规划', conf: 'H' },
+  ]
+  const buckets: TimepointResult[][] = meta.map(() => [])
+  const assign = (p: PlanData): number => {
+    const z = _zoneOf(p)
+    if (p.rule.includes('R1') ) return 0
+    if (z === 'red') return 2          // 14:00 止损
+    if (z === 'yellow') return p.rule.includes('DT1') ? 1 : 2
+    if (p.rule.includes('R3') || p.guard) return 4  // 18:00 绿区追量
+    return 5
+  }
+  plans.filter(p => p.rule && p.rule !== '—').forEach((p, i) => {
+    const idx = assign(p)
+    const z = _zoneOf(p)
+    const pending = p.rule.includes('待确认')
+    const executed = p.rule.includes('已预执行') || p.rule.includes('已执行') || p.rule.includes('触发中')
+    buckets[idx].push({
+      id: `${meta[idx].time.replace(':', '')}-${i}`,
+      plan: p.name, rule: p.rule.split(/[,，]/)[0],
+      zone: z,
+      trigger: `费比${(p.febi * 100).toFixed(0)}% / Gross${(p.gross * 100).toFixed(0)}%，ROI目标${p.roiTarget}，今日花费¥${p.spend.toLocaleString()}`,
+      actionText: p.action.replace(/\n/g, ' ｜ '),
+      type: pending ? 'confirm' : 'auto',
+      initStatus: pending ? 'pending' : executed ? 'executed' : 'confirmed',
+      execTime: pending ? undefined : meta[idx].time + ':10',
+      operator: pending ? undefined : '系统自动',
+    })
+  })
+  return meta.map((m, idx) => {
+    const results = buckets[idx]
+    const pend = results.filter(r => r.initStatus === 'pending').length
+    return {
+      time: m.time, name: m.name, status: 'pending', conf: m.conf,
+      summary: results.length ? `${results.length}条结果${pend ? `，${pend}条待确认` : '，已处理'}` : '此时点暂无规则结果',
+      results,
+    }
+  })
+}
+
 export const STORES: StoreInfo[] = [
   {
     id: 'store1',
@@ -966,3 +1146,68 @@ export const STORES: StoreInfo[] = [
     plans: plans3,
   },
 ]
+
+// ═══════════════════════════════════════════════════════
+// 今日待办决策队列 — 跨面板统一动作清单
+// 按 截止时间 × 预计影响金额 排序
+// ═══════════════════════════════════════════════════════
+export interface TodoItem {
+  id: string
+  priority: 'urgent' | 'high' | 'opportunity'
+  deadline: string
+  deadlineSort: number
+  plan: string
+  rule: string
+  title: string
+  action: string
+  pending: boolean
+  impact: number              // 预计影响金额（元）
+  impactKind: 'save' | 'gain' | 'watch'
+}
+
+export function generateTodoQueue(plans: PlanData[], _cfg: typeof store): TodoItem[] {
+  const items: TodoItem[] = []
+  plans.forEach((p, i) => {
+    const sl = p.gross, pt = p.gross - 0.1
+    const z: 'red' | 'yellow' | 'green' = p.febi > sl ? 'red' : p.febi > pt ? 'yellow' : 'green'
+    const pending = p.rule.includes('待确认')
+
+    if (z === 'red' && p.spend > 100) {
+      const lossRate = p.febi - p.gross
+      // 减亏 = 已亏 + 若不止损按当前速率剩余预算继续亏的部分
+      const save = Math.round(Math.max(p.spend * lossRate, (Math.max(0, p.budget - p.spend)) * lossRate * 0.6 + p.spend * lossRate))
+      items.push({
+        id: `td-r-${i}`, priority: 'urgent', deadline: '14:00', deadlineSort: 14,
+        plan: p.name, rule: pending ? 'R2-B 待确认' : 'R2-B', title: '🔴 红区止损',
+        action: `ROI→${(1 / p.gross * 1.1).toFixed(2)}，${p.budget === 0 ? '已暂停' : '剩余预算×0.60'}，关闭防停投`,
+        pending, impact: save, impactKind: 'save',
+      })
+    } else if (z === 'yellow' && p.spend > 100) {
+      const save = Math.round(p.spend * Math.max(0.005, p.febi - pt))
+      items.push({
+        id: `td-y-${i}`, priority: 'high', deadline: '16:00', deadlineSort: 16,
+        plan: p.name, rule: pending ? 'R2-C 待确认' : 'R2-C', title: '🟡 黄区压量',
+        action: `费比${(p.febi * 100).toFixed(0)}% > 目标${(pt * 100).toFixed(0)}%，全店余量<0则ROI上调10%`,
+        pending, impact: save, impactKind: 'watch',
+      })
+    } else if (z === 'green' && p.conf === 'H') {
+      const util = p.budget > 0 ? p.spend / p.budget : 0
+      if (p.rule.includes('R3') || util > 0.6) {
+        const add = Math.round(p.budget * 0.18)
+        const gain = Math.round(add * Math.max(0.02, pt - p.febi))
+        items.push({
+          id: `td-g-${i}`, priority: 'opportunity', deadline: '18:00', deadlineSort: 18,
+          plan: p.name, rule: 'R3', title: '🟢 绿区追量',
+          action: `预算+18%→¥${(p.budget + add).toLocaleString()}，抓晚高峰高效流量`,
+          pending: false, impact: gain, impactKind: 'gain',
+        })
+      }
+    }
+  })
+  // 待确认优先；其次截止时间早的在前；再次影响金额大的在前
+  return items.sort((a, b) =>
+    (Number(b.pending) - Number(a.pending)) ||
+    (a.deadlineSort - b.deadlineSort) ||
+    (b.impact - a.impact)
+  )
+}

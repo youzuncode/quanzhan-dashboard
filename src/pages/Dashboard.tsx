@@ -7,11 +7,16 @@ import { ProblemsOpps } from '../components/ProblemsOpps'
 import { ChartPanel } from '../components/ChartPanel'
 import { InspectionPanel } from '../components/inspection/InspectionPanel'
 import { PlanTable } from '../components/dashboard/PlanTable'
+import { TodoQueue } from '../components/dashboard/TodoQueue'
 import { AlertSidePanel } from '../components/AlertSidePanel'
 import { RuleEnginePage } from './RuleEnginePage'
 import { InspectPage } from './InspectPage'
 import { PlanDetail } from './PlanDetail'
-import { initialActionLog, generateActionLog, STORES } from '../lib/mockData'
+import {
+  initialActionLog, generateActionLog, STORES,
+  paramOps, probsData, oppsData, algoData, planErr, timepoints,
+  generateParamOps, generateProblems, generateOpps, generateAlgo, generatePlanErr, generateTimepoints,
+} from '../lib/mockData'
 
 export function Dashboard() {
   const [selectedStoreId, setSelectedStoreId] = useState('store1')
@@ -21,7 +26,18 @@ export function Dashboard() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
 
   const currentStore = STORES.find(s => s.id === selectedStoreId) || STORES[0]
-  const actionLog = selectedStoreId === 'store1' ? initialActionLog : generateActionLog(currentStore.plans)
+  const isMain = selectedStoreId === 'store1'
+  const cfg = currentStore.storeConfig
+  const sp = currentStore.plans
+
+  // Store1 uses the hand-authored mock; other stores derive from their plans
+  const actionLog = isMain ? initialActionLog : generateActionLog(sp)
+  const ops = isMain ? paramOps : generateParamOps(sp)
+  const probs = isMain ? probsData : generateProblems(sp, cfg)
+  const opps = isMain ? oppsData : generateOpps(sp)
+  const algos = isMain ? algoData : generateAlgo(sp, cfg)
+  const planErrData = isMain ? planErr : generatePlanErr(sp)
+  const tps = isMain ? timepoints : generateTimepoints(sp)
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f4f8' }}>
@@ -33,13 +49,14 @@ export function Dashboard() {
         onSelectStore={setSelectedStoreId}
       />
       <div className="p-3 flex-1">
-        <KPICards storeConfig={currentStore.storeConfig} storePlans={currentStore.plans} />
-        <StoreBar storeConfig={currentStore.storeConfig} storePlans={currentStore.plans} />
-        <ParamPanel />
-        <ProblemsOpps />
-        <ChartPanel />
+        <KPICards storeConfig={cfg} storePlans={sp} />
+        <TodoQueue plans={sp} storeConfig={cfg} onSelectPlan={name => setSelectedPlan(name)} />
+        <StoreBar storeConfig={cfg} storePlans={sp} />
+        <ParamPanel ops={ops} />
+        <ProblemsOpps probs={probs} opps={opps} algos={algos} />
+        <ChartPanel plans={sp} planErrData={planErrData} />
         <div className="flex gap-2.5 mb-2.5">
-          <InspectionPanel />
+          <InspectionPanel timepoints={tps} />
         </div>
         <PlanTable
           plans={currentStore.plans}
@@ -93,10 +110,10 @@ export function Dashboard() {
       </div>
 
       {/* Overlays */}
-      {showAlerts && <AlertSidePanel plans={currentStore.plans} onClose={() => setShowAlerts(false)} />}
-      {showRuleEngine && <RuleEnginePage plans={currentStore.plans} onClose={() => setShowRuleEngine(false)} />}
-      {showInspect && <InspectPage plans={currentStore.plans} onClose={() => setShowInspect(false)} />}
-      {selectedPlan && <PlanDetail planName={selectedPlan} storePlans={currentStore.plans} onClose={() => setSelectedPlan(null)} />}
+      {showAlerts && <AlertSidePanel plans={sp} onClose={() => setShowAlerts(false)} />}
+      {showRuleEngine && <RuleEnginePage plans={sp} onClose={() => setShowRuleEngine(false)} />}
+      {showInspect && <InspectPage plans={sp} onClose={() => setShowInspect(false)} />}
+      {selectedPlan && <PlanDetail planName={selectedPlan} storePlans={sp} onClose={() => setSelectedPlan(null)} />}
     </div>
   )
 }

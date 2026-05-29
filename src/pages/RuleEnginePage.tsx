@@ -101,20 +101,24 @@ function runBacktest(startDate: string, endDate: string, _gross: number, _weekly
     return { date, withRule: +withRule.toFixed(3), noRule: +base.toFixed(3) }
   })
 
-  // Build detail rows
-  const ruleKeys = [...selectedRules]
+  // Build detail rows — deterministic: same (dates, rules, plans) → same output
+  const ruleKeys = [...selectedRules].sort()
+  // Seed from inputs so identical backtest configs reproduce identical results
+  let seed = (startDate + endDate + ruleKeys.join() + planNames.join()).split('')
+    .reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 7)
+  const rng = () => { seed = (Math.imul(1664525, seed) + 1013904223) | 0; return (seed >>> 0) / 4294967296 }
   const detailRows: { date: string; plan: string; rule: string; rDef: typeof RULE_DEFS[0]; action: string; estRoiDelta: number; estFebiDelta: number; auto: boolean }[] = []
-  dates.slice(0, 10).forEach(date => {
-    const plan = planNames[Math.floor(Math.random() * planNames.length)]
+  dates.slice(0, 10).forEach((date, di) => {
     if (ruleKeys.length === 0) return
-    const rKey = ruleKeys[Math.floor(Math.random() * ruleKeys.length)]
+    const plan = planNames[Math.floor(rng() * planNames.length)]
+    const rKey = ruleKeys[(di + Math.floor(rng() * ruleKeys.length)) % ruleKeys.length]
     const rDef = RULE_DEFS.find(r => r.key === rKey)
     if (!rDef) return
     const scUp = new Set(['R3', 'DT3', 'WK2'])
     detailRows.push({
       date, plan, rule: rKey, rDef, action: rDef.action,
-      estRoiDelta: scUp.has(rKey) ? +(Math.random() * 0.5).toFixed(2) : +(-(Math.random() * 0.3)).toFixed(2),
-      estFebiDelta: scUp.has(rKey) ? +(-(Math.random() * 2)).toFixed(1) : +(-(Math.random() * 3)).toFixed(1),
+      estRoiDelta: scUp.has(rKey) ? +(rng() * 0.5).toFixed(2) : +(-(rng() * 0.3)).toFixed(2),
+      estFebiDelta: scUp.has(rKey) ? +(-(rng() * 2)).toFixed(1) : +(-(rng() * 3)).toFixed(1),
       auto: rDef.auto,
     })
   })

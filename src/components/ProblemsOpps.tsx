@@ -1,6 +1,9 @@
 import { probsData, oppsData, algoData } from '../lib/mockData'
+import type { AlertItem, AlgoItem } from '../lib/mockData'
 
-export function ProblemsOpps() {
+interface Props { probs?: AlertItem[]; opps?: AlertItem[]; algos?: AlgoItem[] }
+
+export function ProblemsOpps({ probs = probsData, opps = oppsData, algos = algoData }: Props) {
   return (
     <div className="grid grid-cols-3 gap-2.5 mb-2.5">
       {/* Problems */}
@@ -8,11 +11,11 @@ export function ProblemsOpps() {
         <div className="px-3 py-2 font-bold text-xs border-b border-red-100 bg-red-50 text-red-800 flex items-center justify-between">
           <span>🔴 主要问题</span>
           <span className="bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
-            {probsData.length}
+            {probs.length}
           </span>
         </div>
         <div className="p-2 space-y-2 max-h-60 overflow-y-auto">
-          {probsData.map((p, i) => (
+          {probs.map((p, i) => (
             <div key={i} className={`rounded-lg border overflow-hidden ${p.level === 'red' ? 'border-red-200' : 'border-yellow-200'}`}>
               <div className={`px-2.5 py-1.5 flex items-center gap-1.5 flex-wrap ${p.level === 'red' ? 'bg-red-50' : 'bg-yellow-50'}`}>
                 <span className="font-bold text-xs flex-1">{p.title}</span>
@@ -34,11 +37,11 @@ export function ProblemsOpps() {
         <div className="px-3 py-2 font-bold text-xs border-b border-green-100 bg-green-50 text-green-800 flex items-center justify-between">
           <span>🟢 机会点</span>
           <span className="bg-green-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
-            {oppsData.length}
+            {opps.length}
           </span>
         </div>
         <div className="p-2 space-y-2 max-h-60 overflow-y-auto">
-          {oppsData.map((o, i) => (
+          {opps.map((o, i) => (
             <div key={i} className="rounded-lg border border-green-200 overflow-hidden">
               <div className="px-2.5 py-1.5 bg-green-50 flex items-center gap-1.5 flex-wrap">
                 <span className="font-bold text-xs flex-1">{o.title}</span>
@@ -61,7 +64,7 @@ export function ProblemsOpps() {
           🔧 算法调整方向
         </div>
         <div className="p-2 space-y-2 max-h-60 overflow-y-auto">
-          {algoData.map((a, i) => (
+          {algos.map((a, i) => (
             <div key={i} className="rounded-lg border border-indigo-100 p-2.5 bg-indigo-50">
               <div className="font-bold text-xs mb-1">{a.title}</div>
               <div className="text-xs text-gray-600 mb-1.5">{a.detail}</div>

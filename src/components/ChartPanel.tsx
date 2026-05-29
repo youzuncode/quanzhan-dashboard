@@ -3,21 +3,14 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts'
-import { hours, predicted, actual, hist14, planErr, plans } from '../lib/mockData'
+import { hours, predicted, actual, hist14, planErr, plans as defaultPlans } from '../lib/mockData'
+import type { PlanData, PlanErrRow } from '../lib/mockData'
 
 const hourlyData = hours.map((h, i) => ({
   hour: `${h}:00`,
   predicted: predicted[i],
   actual: actual[i] ?? undefined,
 }))
-
-const zoneCounts = { green: 0, yellow: 0, red: 0 }
-plans.forEach(p => { zoneCounts[p.zone]++ })
-const pieData = [
-  { name: '绿区', value: zoneCounts.green, fill: '#2e7d32' },
-  { name: '黄区', value: zoneCounts.yellow, fill: '#f57f17' },
-  { name: '红区', value: zoneCounts.red, fill: '#c62828' },
-]
 
 const roiRows = [
   { roi: 4, cls: 'red' }, { roi: 5, cls: 'yellow' }, { roi: 6, cls: '' },
@@ -40,8 +33,18 @@ let ms = 0, mn = 0
 actual.forEach((a, i) => { if (a !== null && predicted[i]) { ms += Math.abs(a - predicted[i]) / predicted[i]; mn++ } })
 const todayMape = mn ? (ms / mn * 100) : avgMape
 
-export function ChartPanel() {
+interface Props { plans?: PlanData[]; planErrData?: PlanErrRow[] }
+
+export function ChartPanel({ plans = defaultPlans, planErrData = planErr }: Props) {
   const [forecastTab, setForecastTab] = useState<'hourly' | 'hist14'>('hourly')
+
+  const zoneCounts = { green: 0, yellow: 0, red: 0 }
+  plans.forEach(p => { zoneCounts[p.zone]++ })
+  const pieData = [
+    { name: '绿区', value: zoneCounts.green, fill: '#2e7d32' },
+    { name: '黄区', value: zoneCounts.yellow, fill: '#f57f17' },
+    { name: '红区', value: zoneCounts.red, fill: '#c62828' },
+  ]
 
   return (
     <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
@@ -150,7 +153,7 @@ export function ChartPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...planErr].sort((a, b) => a.mape - b.mape).map((e, i) => {
+                  {[...planErrData].sort((a, b) => a.mape - b.mape).map((e, i) => {
                     const barW = Math.min(100, e.mape / 35 * 100)
                     const bc = e.mape < 15 ? '#2e7d32' : e.mape < 25 ? '#f57f17' : '#c62828'
                     const confCls = { H: { bg: '#e8f5e9', c: '#2e7d32' }, M: { bg: '#fff8e1', c: '#f57f17' }, L: { bg: '#ffebee', c: '#c62828' } }[e.conf]

@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { timepoints, MOCK_API_PARAMS } from '../../lib/mockData'
+import { useState, useCallback, useRef } from 'react'
+import { timepoints as defaultTimepoints, MOCK_API_PARAMS } from '../../lib/mockData'
 import type { TimepointResult, Timepoint } from '../../lib/mockData'
 
 interface ResultState {
@@ -12,7 +12,7 @@ interface ResultState {
 type ResultStates = Record<string, ResultState>
 type ApiResults = Record<string, { status: string; message: string; requestId: string; execTime: string; params: { key: string; before: string; after: string; change: string; dir: string }[] }>
 
-function initStates(): ResultStates {
+function initStates(timepoints: Timepoint[]): ResultStates {
   const s: ResultStates = {}
   timepoints.forEach(tp => {
     tp.results.forEach(r => {
@@ -41,14 +41,23 @@ function buildMockAPIResponse(r: TimepointResult) {
 
 interface Props {
   alerts?: unknown[]  // kept for compat
+  timepoints?: Timepoint[]
 }
 
-export function InspectionPanel(_: Props) {
+export function InspectionPanel({ timepoints = defaultTimepoints }: Props) {
   const [activeIdx, setActiveIdx] = useState(2) // default 14:00
-  const [states, setStates] = useState<ResultStates>(initStates)
+  const [states, setStates] = useState<ResultStates>(() => initStates(timepoints))
   const [apiResults, setApiResults] = useState<ApiResults>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [showNote, setShowNote] = useState<Record<string, boolean>>({})
+
+  // Reset internal state when the store (timepoints) changes
+  const prevTpRef = useRef(timepoints)
+  if (prevTpRef.current !== timepoints) {
+    prevTpRef.current = timepoints
+    setStates(initStates(timepoints))
+    setApiResults({})
+  }
 
   const now = new Date()
   const currentHour = now.getHours()

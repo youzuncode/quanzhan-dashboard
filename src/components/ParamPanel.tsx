@@ -1,4 +1,5 @@
 import { paramOps } from '../lib/mockData'
+import type { ParamOp } from '../lib/mockData'
 
 const clsBorder: Record<string, string> = {
   act: 'border-indigo-300 bg-indigo-50',
@@ -17,14 +18,14 @@ const badgeCls: Record<string, string> = {
   guard: 'bg-blue-100 text-blue-800',
 }
 
-export function ParamPanel() {
+export function ParamPanel({ ops = paramOps }: { ops?: ParamOp[] }) {
   return (
     <div className="bg-white rounded-xl shadow-sm mb-2.5 overflow-hidden">
       <div className="px-3 py-2 font-bold text-xs border-b border-gray-100">
         ⚙️ 今日参数操作指令
       </div>
       <div className="grid grid-cols-4 gap-0 divide-x divide-gray-100">
-        {paramOps.map(op => (
+        {ops.map(op => (
           <div key={op.name} className={`p-3 border ${clsBorder[op.cls]} border-0`}>
             <div className={`text-xs font-bold px-2 py-1 rounded mb-2 ${clsHeader[op.cls]}`}>
               {op.icon} {op.name}
