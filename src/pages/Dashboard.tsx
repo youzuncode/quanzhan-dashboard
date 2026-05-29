@@ -17,6 +17,7 @@ import { RuleEnginePage } from './RuleEnginePage'
 import { InspectPage } from './InspectPage'
 import { PlanDetail } from './PlanDetail'
 import { ActionLogPage } from './ActionLogPage'
+import { CoopetitionPage } from './CoopetitionPage'
 import {
   initialActionLog, generateActionLog, STORES,
   paramOps, probsData, oppsData, algoData, planErr, timepoints,
@@ -31,6 +32,7 @@ export function Dashboard() {
   const [showInspect, setShowInspect] = useState(false)
   const [showAlerts, setShowAlerts] = useState(false)
   const [showActionLog, setShowActionLog] = useState(false)
+  const [showCoop, setShowCoop] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
 
   const currentStore = STORES.find(s => s.id === selectedStoreId) || STORES[0]
@@ -54,6 +56,7 @@ export function Dashboard() {
         onOpenInspection={() => setShowInspect(true)}
         onOpenAlerts={() => setShowAlerts(true)}
         onOpenActionLog={() => setShowActionLog(true)}
+        onOpenCoop={() => setShowCoop(true)}
         actionLogCount={actionLog.length}
         selectedStoreId={selectedStoreId}
         onSelectStore={setSelectedStoreId}
@@ -110,6 +113,7 @@ export function Dashboard() {
       {showRuleEngine && <RuleEnginePage plans={sp} onClose={() => setShowRuleEngine(false)} />}
       {showInspect && <InspectPage plans={sp} onClose={() => setShowInspect(false)} />}
       {showActionLog && <ActionLogPage entries={actionLog} onClose={() => setShowActionLog(false)} />}
+      {showCoop && <CoopetitionPage onClose={() => setShowCoop(false)} />}
       {selectedPlan && <PlanDetail planName={selectedPlan} storePlans={sp} onClose={() => setSelectedPlan(null)} />}
     </div>
   )

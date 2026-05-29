@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { RefreshCw, Settings, Clock, Bell, ChevronDown, FileText } from 'lucide-react'
+import { RefreshCw, Settings, Clock, Bell, ChevronDown, FileText, Shuffle } from 'lucide-react'
 import { sidePanelAlerts, STORES } from '../../lib/mockData'
 
 interface Props {
@@ -9,12 +9,13 @@ interface Props {
   onOpenInspection?: () => void
   onOpenAlerts: () => void
   onOpenActionLog: () => void
+  onOpenCoop: () => void
   actionLogCount: number
   selectedStoreId: string
   onSelectStore: (id: string) => void
 }
 
-export function TopBar({ onOpenRuleEngine, onOpenInspection, onOpenAlerts, onOpenActionLog, actionLogCount, selectedStoreId, onSelectStore }: Props) {
+export function TopBar({ onOpenRuleEngine, onOpenInspection, onOpenAlerts, onOpenActionLog, onOpenCoop, actionLogCount, selectedStoreId, onSelectStore }: Props) {
   const [now, setNow] = useState(new Date())
   const [showStorePicker, setShowStorePicker] = useState(false)
 
@@ -94,6 +95,11 @@ export function TopBar({ onOpenRuleEngine, onOpenInspection, onOpenAlerts, onOpe
           className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border border-white/30"
           style={{ background: 'rgba(255,255,255,.15)' }}>
           <Clock size={11} /> 巡检
+        </button>
+        <button onClick={onOpenCoop}
+          className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border border-white/30"
+          style={{ background: 'rgba(255,255,255,.15)' }}>
+          <Shuffle size={11} /> 竞合协调
         </button>
         <button onClick={onOpenAlerts}
           className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border border-white/30 relative"

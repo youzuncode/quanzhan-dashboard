@@ -225,6 +225,11 @@ export interface PlanData {
   guard: boolean
   rule: string
   action: string
+  // 商品/货品/条码:前台商品 itemId、货品 skuId 各店独立不可跨店比对;
+  // 只有条码 barcode(69码)是跨店唯一锚点,用于跨店同款归并
+  itemId?: string
+  skuId?: string
+  barcode?: string
 }
 
 export const plans: PlanData[] = [
@@ -1203,6 +1208,55 @@ const store4Config = (() => {
   }
 })()
 
+// ═══════════════════════════════════════════════════════
+// 跨店同款（共享条码）— 竞合协调演示数据
+// 前台商品名 / skuId / itemId 各店独立,只有 barcode 可跨店比对
+// 4 组剧情:良性竞争 / 建议错位 / 多店抢量 / 价格战
+// ═══════════════════════════════════════════════════════
+type OvLvl = 'high' | 'mid' | 'low'
+export interface BarcodeMeta {
+  barcode: string; title: string; gross: number
+  overlap: { kw: OvLvl; crowd: OvLvl; time: OvLvl; price: OvLvl }
+}
+export const BARCODE_META: Record<string, BarcodeMeta> = {
+  '6901234500011': { barcode: '6901234500011', title: '氨基酸洗发水 500ml', gross: 0.33, overlap: { kw: 'low', crowd: 'low', time: 'mid', price: 'low' } },
+  '6901234500028': { barcode: '6901234500028', title: '玻尿酸补水面膜 30片', gross: 0.31, overlap: { kw: 'high', crowd: 'high', time: 'mid', price: 'mid' } },
+  '6901234500035': { barcode: '6901234500035', title: '益生菌牙膏 120g', gross: 0.30, overlap: { kw: 'high', crowd: 'mid', time: 'high', price: 'mid' } },
+  '6901234500042': { barcode: '6901234500042', title: '深层洁净沐浴露 1L', gross: 0.30, overlap: { kw: 'high', crowd: 'mid', time: 'mid', price: 'high' } },
+}
+
+// A 氨基酸洗发水 — 良性竞争(旗舰打新客 / 专营打复购,重叠低)
+plans.push(
+  { name: '陆老师氨基酸洗发水500ml·旗舰正装', zone: 'green', roiTarget: 7.0, febi: 0.16, gross: 0.33, budget: 3000, spend: 8200, conf: 'H', guard: true, rule: '—', action: 'ROI维持7.0 | 预算维持', itemId: 'IT60011', skuId: 'SKU-LS-AS500', barcode: '6901234500011' },
+)
+plans2.push(
+  { name: '氨基酸洗发水500ml·专营装', zone: 'green', roiTarget: 6.5, febi: 0.18, gross: 0.33, budget: 2500, spend: 6000, conf: 'H', guard: true, rule: '—', action: 'ROI维持6.5 | 预算维持', itemId: 'IT70011', skuId: 'SKU-LY-AS500', barcode: '6901234500011' },
+)
+// B 玻尿酸面膜 — 建议错位(词/人群重叠高)
+plans2.push(
+  { name: '玻尿酸补水面膜30片·专营', zone: 'yellow', roiTarget: 5.0, febi: 0.25, gross: 0.31, budget: 2000, spend: 5200, conf: 'M', guard: false, rule: '—', action: 'ROI维持5.0 | 预算维持', itemId: 'IT70028', skuId: 'SKU-LY-HA30', barcode: '6901234500028' },
+)
+plans3.push(
+  { name: '玻尿酸面膜30片·家庭装', zone: 'yellow', roiTarget: 5.2, febi: 0.26, gross: 0.30, budget: 1800, spend: 4600, conf: 'M', guard: false, rule: '—', action: 'ROI维持5.2 | 预算维持', itemId: 'IT80028', skuId: 'SKU-JJ-HA30', barcode: '6901234500028' },
+)
+// C 益生菌牙膏 — 多店同时追量(3店都 R3 绿区追量)
+plans.push(
+  { name: '益生菌牙膏120g·旗舰', zone: 'green', roiTarget: 7.5, febi: 0.15, gross: 0.30, budget: 1500, spend: 4000, conf: 'H', guard: true, rule: 'R3触发中', action: 'ROI维持7.5\n预算+20%→¥1,800', itemId: 'IT60035', skuId: 'SKU-LS-TP120', barcode: '6901234500035' },
+)
+plans2.push(
+  { name: '益生菌牙膏120g·专营', zone: 'green', roiTarget: 7.0, febi: 0.17, gross: 0.31, budget: 1200, spend: 3200, conf: 'H', guard: true, rule: 'R3触发中', action: 'ROI维持7.0\n预算+18%→¥1,416', itemId: 'IT70035', skuId: 'SKU-LY-TP120', barcode: '6901234500035' },
+)
+plans3.push(
+  { name: '益生菌牙膏120g·日用', zone: 'green', roiTarget: 8.0, febi: 0.14, gross: 0.29, budget: 1000, spend: 2800, conf: 'H', guard: true, rule: 'R3触发中', action: 'ROI维持8.0\n预算+20%→¥1,200', itemId: 'IT80035', skuId: 'SKU-JJ-TP120', barcode: '6901234500035' },
+)
+// D 深层洁净沐浴露 — 价格战 / 合并亏损(两店红区,价格带高度重叠)
+plans.push(
+  { name: '深层洁净沐浴露1L·旗舰', zone: 'red', roiTarget: 3.5, febi: 0.34, gross: 0.30, budget: 600, spend: 4200, conf: 'L', guard: false, rule: 'R2-B待确认', action: 'ROI:3.5→3.67 | 剩余×0.60\n待人工确认→', itemId: 'IT60042', skuId: 'SKU-LS-BW1L', barcode: '6901234500042' },
+)
+plans3.push(
+  { name: '深层洁净沐浴露1L·日用', zone: 'red', roiTarget: 3.8, febi: 0.33, gross: 0.31, budget: 800, spend: 4500, conf: 'M', guard: false, rule: 'R2-B待确认', action: 'ROI:3.8→3.55 | 剩余×0.60\n待人工确认→', itemId: 'IT80042', skuId: 'SKU-JJ-BW1L', barcode: '6901234500042' },
+)
+
 export const STORES: StoreInfo[] = [
   {
     id: 'store1',
@@ -1301,4 +1355,44 @@ export function generateTodoQueue(plans: PlanData[], _cfg: typeof store): TodoIt
     (a.deadlineSort - b.deadlineSort) ||
     (b.impact - a.impact)
   )
+}
+
+// ═══════════════════════════════════════════════════════
+// 跨店竞合:按条码归并各店同款计划
+// ═══════════════════════════════════════════════════════
+export interface CoopMember {
+  storeId: string; storeName: string; storeTag: string; storeColor: string
+  plan: PlanData
+}
+export interface CoopGroup {
+  barcode: string; title: string; gross: number
+  overlap: BarcodeMeta['overlap']
+  members: CoopMember[]
+}
+
+// 扫描所有店铺,按条码归并出现在 ≥2 家店的同款
+export function getCoopetitionGroups(): CoopGroup[] {
+  const byBarcode: Record<string, CoopMember[]> = {}
+  STORES.forEach(s => {
+    s.plans.forEach(p => {
+      if (!p.barcode) return
+      ;(byBarcode[p.barcode] ||= []).push({
+        storeId: s.id, storeName: s.name, storeTag: s.tag, storeColor: s.tagColor, plan: p,
+      })
+    })
+  })
+  const groups: CoopGroup[] = []
+  Object.entries(byBarcode).forEach(([barcode, members]) => {
+    const stores = new Set(members.map(m => m.storeId))
+    if (stores.size < 2) return  // 仅一家店,不构成跨店竞合
+    const meta = BARCODE_META[barcode]
+    groups.push({
+      barcode,
+      title: meta?.title || barcode,
+      gross: meta?.gross || members[0].plan.gross,
+      overlap: meta?.overlap || { kw: 'mid', crowd: 'mid', time: 'mid', price: 'mid' },
+      members,
+    })
+  })
+  return groups
 }
