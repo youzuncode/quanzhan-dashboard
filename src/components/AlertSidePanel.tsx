@@ -227,7 +227,6 @@ export function AlertSidePanel({ plans, onClose }: Props) {
         borderLeft: `4px solid ${a.color}`,
         background: '#fff',
         borderRadius: '0 8px 8px 0',
-        marginBottom: 8,
         boxShadow: '0 1px 3px rgba(0,0,0,.06)',
         opacity: isConfirmed ? 0.5 : 1,
         border: `1px solid ${a.color}22`,
@@ -272,68 +271,73 @@ export function AlertSidePanel({ plans, onClose }: Props) {
     if (arr.length === 0) return null
     return (
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
           {title}
-          <span style={{ background: `${color}22`, color, padding: '1px 7px', borderRadius: 10, fontSize: 9 }}>{arr.length}</span>
+          <span style={{ background: `${color}22`, color, padding: '1px 7px', borderRadius: 10, fontSize: 10 }}>{arr.length}</span>
         </div>
-        {arr.map(a => <AlertItem key={a.id} a={a} />)}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 10 }}>
+          {arr.map(a => <AlertItem key={a.id} a={a} />)}
+        </div>
       </div>
     )
   }
 
   return (
     <>
-      {/* Overlay */}
-      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
-
-      {/* Panel */}
-      <div className="fixed right-0 top-0 bottom-0 z-50 flex flex-col overflow-hidden" style={{ width: 400, background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,.15)' }}>
+      {/* Full-screen page */}
+      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: '#f3f4f6' }}>
         {/* Header */}
-        <div style={{ padding: '12px 16px', background: 'linear-gradient(135deg, #c62828, #e53935)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div style={{ padding: '12px 18px', background: 'linear-gradient(135deg, #c62828, #e53935)', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.3)', color: '#fff', cursor: 'pointer' }}>
+            ← 返回看板
+          </button>
           <div>
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>🔔 消息 / 预警中心</span>
-            <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 10, marginTop: 2 }}>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>🔔 消息 / 预警中心</div>
+            <div style={{ color: 'rgba(255,255,255,.8)', fontSize: 11, marginTop: 1 }}>
               {urgent.length}条紧急 · {warning.length}条预警 · {opportunity.length}条机会
-              {badgeCount > 0 && <span style={{ background: '#fff', color: '#c62828', fontWeight: 700, borderRadius: 10, padding: '0 6px', marginLeft: 8, fontSize: 10 }}>{badgeCount}</span>}
+              {badgeCount > 0 && <span style={{ background: '#fff', color: '#c62828', fontWeight: 700, borderRadius: 10, padding: '0 7px', marginLeft: 8, fontSize: 10 }}>{badgeCount}</span>}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
-              onClick={() => setShowNotifyModal(true)}
-              style={{ padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 700, background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.35)', color: '#fff', cursor: 'pointer' }}>
-              {notifyStatus === 'ok' ? '✅ 已推送' : notifyStatus === 'sending' ? '推送中…' : '⚡ 推送飞书'}
-            </button>
-            <button onClick={onClose} style={{ color: 'rgba(255,255,255,.8)', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
-          </div>
+          <button
+            onClick={() => setShowNotifyModal(true)}
+            style={{ marginLeft: 'auto', padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.35)', color: '#fff', cursor: 'pointer' }}>
+            {notifyStatus === 'ok' ? '✅ 已推送' : notifyStatus === 'sending' ? '推送中…' : '⚡ 推送飞书'}
+          </button>
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
-          {active.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#aaa' }}>
-              <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
-              <div style={{ fontSize: 13 }}>暂无待处理消息</div>
-            </div>
-          ) : (
-            <>
-              <Section title="🔴 紧急待确认" arr={urgent} color="#c62828" />
-              <Section title="🟡 预警关注" arr={warning} color="#f57f17" />
-              <Section title="🚀 追量机会" arr={opportunity} color="#2e7d32" />
-              <Section title="📋 信息提示" arr={info} color="#546e7a" />
-            </>
-          )}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 24px' }}>
+          <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+            {active.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '80px 20px', color: '#aaa' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+                <div style={{ fontSize: 14 }}>暂无待处理消息</div>
+              </div>
+            ) : (
+              <>
+                <Section title="🔴 紧急待确认" arr={urgent} color="#c62828" />
+                <Section title="🟡 预警关注" arr={warning} color="#f57f17" />
+                <Section title="🚀 追量机会" arr={opportunity} color="#2e7d32" />
+                <Section title="📋 信息提示" arr={info} color="#546e7a" />
+              </>
+            )}
 
-          {/* Done (dismissed from view but show as history) */}
-          {dismissed.size > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#aaa', marginBottom: 6 }}>已跳过 ({dismissed.size}条)</div>
-              {allAlerts.filter(a => dismissed.has(a.id)).map(a => (
-                <div key={a.id} style={{ fontSize: 10, color: '#bbb', padding: '3px 0', borderBottom: '1px solid #f0f0f0' }}>
-                  {a.rule} · {a.plan} · {a.title}
+            {/* Done (dismissed from view but show as history) */}
+            {dismissed.size > 0 && (
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #e5e7eb' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', marginBottom: 8 }}>已跳过 ({dismissed.size}条)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
+                  {allAlerts.filter(a => dismissed.has(a.id)).map(a => (
+                    <div key={a.id} style={{ fontSize: 11, color: '#bbb', padding: '4px 8px', background: '#fff', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.rule} · {a.plan} · {a.title}</span>
+                      <button onClick={() => setDismissed(p => { const n = new Set(p); n.delete(a.id); return n })}
+                        style={{ fontSize: 10, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>恢复</button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {showNotifyModal && (
