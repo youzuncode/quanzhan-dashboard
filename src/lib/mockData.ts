@@ -1400,3 +1400,87 @@ export function getCoopetitionGroups(): CoopGroup[] {
   })
   return groups
 }
+
+// ═══════════════════════════════════════════════════════
+// 历史巡检(确定性生成)— 复盘台用
+// 现实里来自每日时点级执行记录;此处按各店计划确定性派生,标"模拟"
+// ═══════════════════════════════════════════════════════
+export type InspStatus = 'auto' | 'confirmed' | 'dismissed'
+export interface InspResult { plan: string; rule: string; zone: 'red' | 'yellow' | 'green'; action: string; status: InspStatus; operator: string }
+export interface InspTimepoint { time: string; conf: 'H' | 'M' | 'L'; results: InspResult[] }
+export interface InspDay {
+  date: string; timepoints: InspTimepoint[]
+  triggers: number; auto: number; confirmed: number; dismissed: number
+}
+
+const INSP_TP: { time: string; conf: 'H' | 'M' | 'L' }[] = [
+  { time: '09:00', conf: 'H' }, { time: '12:00', conf: 'L' }, { time: '14:00', conf: 'M' },
+  { time: '16:00', conf: 'H' }, { time: '18:00', conf: 'H' }, { time: '20:00', conf: 'H' }, { time: '22:00', conf: 'H' },
+]
+const _autoRuleKeys = new Set(RULE_DEFS.filter(r => r.auto).map(r => r.key))
+function _ruleToTp(rule: string): string {
+  const k = rule.replace(/[待确认已预执行触发中预警止损判检\s]/g, '')
+  if (/^R1|R4/.test(k)) return '12:00'
+  if (/^R2/.test(k)) return '14:00'
+  if (/^R3/.test(k)) return '18:00'
+  if (/^DT/.test(k)) return '22:00'
+  if (/^WK/.test(k)) return '09:00'
+  return '16:00'
+}
+function _zoneOfPlan(p: PlanData): 'red' | 'yellow' | 'green' {
+  return p.febi > p.gross ? 'red' : p.febi > p.gross - 0.1 ? 'yellow' : 'green'
+}
+
+// 生成最近 n 天日期(MM/DD),锚定 05/28 往前
+function _recentDates(n: number): string[] {
+  const out: string[] = []
+  let m = 5, d = 28
+  for (let i = 0; i < n; i++) {
+    out.unshift(`${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`)
+    d--; if (d < 1) { m--; d = 30 }
+  }
+  return out
+}
+
+export function getInspectionHistory(plans: PlanData[], days = 14): InspDay[] {
+  const dates = _recentDates(days)
+  return dates.map((date, di) => {
+    const tpMap: Record<string, InspResult[]> = {}
+    INSP_TP.forEach(t => { tpMap[t.time] = [] })
+
+    plans.forEach((p, pi) => {
+      const zone = _zoneOfPlan(p)
+      let seed = (di * 131 + pi * 17 + p.name.length * 7 + 3) & 0x7fffffff
+      const rng = () => { seed = (seed * 1664525 + 1013904223) & 0x7fffffff; return seed / 0x7fffffff }
+
+      const cands: { rule: string; fire: number }[] = []
+      if (zone === 'red') { cands.push({ rule: 'R2-B', fire: 0.85 }, { rule: 'R1-A', fire: 0.35 }) }
+      else if (zone === 'yellow') { cands.push({ rule: rng() > 0.5 ? 'R2-C' : 'DT1', fire: 0.6 }) }
+      else { if (/R3|追量/.test(p.rule)) cands.push({ rule: 'R3', fire: 0.55 }); else cands.push({ rule: 'DT3', fire: 0.25 }) }
+      if (di % 7 === 0) cands.push({ rule: 'WK1', fire: 0.4 })
+
+      cands.forEach(c => {
+        if (rng() > c.fire) return
+        const tp = _ruleToTp(c.rule)
+        const isAuto = _autoRuleKeys.has(c.rule)
+        const status: InspStatus = isAuto ? 'auto' : (rng() > 0.18 ? 'confirmed' : 'dismissed')
+        const operator = status === 'auto' ? '系统自动' : '操作员'
+        tpMap[tp].push({
+          plan: p.name, rule: c.rule, zone,
+          action: p.action.split('\n')[0].replace(/待人工确认→?/, '').trim() || `${c.rule} 执行`,
+          status, operator,
+        })
+      })
+    })
+
+    const timepoints: InspTimepoint[] = INSP_TP.map(t => ({ time: t.time, conf: t.conf, results: tpMap[t.time] }))
+    const all = timepoints.flatMap(t => t.results)
+    return {
+      date, timepoints,
+      triggers: all.length,
+      auto: all.filter(r => r.status === 'auto').length,
+      confirmed: all.filter(r => r.status === 'confirmed').length,
+      dismissed: all.filter(r => r.status === 'dismissed').length,
+    }
+  })
+}

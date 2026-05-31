@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { RULE_DEFS } from '../lib/mockData'
-import type { PlanData } from '../lib/mockData'
+import { useState, useMemo } from 'react'
+import { RULE_DEFS, getInspectionHistory } from '../lib/mockData'
+import type { PlanData, InspStatus } from '../lib/mockData'
 
 interface Checkpoint {
   time: string
@@ -104,9 +104,41 @@ interface Props {
   onClose: () => void
 }
 
+type InspTab = 'today' | 'history' | 'trend'
+const statusMeta: Record<InspStatus, { label: string; bg: string; color: string }> = {
+  auto: { label: '🤖 自动执行', bg: '#f1f5f9', color: '#475569' },
+  confirmed: { label: '✅ 人工确认', bg: '#e8f5e9', color: '#2e7d32' },
+  dismissed: { label: '✗ 已忽略', bg: '#f3f4f6', color: '#9ca3af' },
+}
+const zoneChip = { red: { t: '🔴', c: '#c62828' }, yellow: { t: '🟡', c: '#f57f17' }, green: { t: '🟢', c: '#2e7d32' } }
+
 export function InspectPage({ plans, onClose }: Props) {
   const now = new Date()
   const curH = now.getHours()
+  const [tab, setTab] = useState<InspTab>('today')
+  const history = useMemo(() => getInspectionHistory(plans), [plans])
+  const [histDate, setHistDate] = useState(() => history[history.length - 1]?.date || '')
+  const histDay = history.find(d => d.date === histDate) || history[history.length - 1]
+
+  // 时点趋势:按时点跨天聚合
+  const trendRows = useMemo(() => {
+    return ['09:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'].map(time => {
+      let triggers = 0, auto = 0, confirmed = 0, dismissed = 0
+      history.forEach(d => {
+        const tp = d.timepoints.find(t => t.time === time)
+        tp?.results.forEach(r => {
+          triggers++
+          if (r.status === 'auto') auto++
+          else if (r.status === 'confirmed') confirmed++
+          else dismissed++
+        })
+      })
+      const manual = confirmed + dismissed
+      const confirmRate = manual > 0 ? Math.round(confirmed / manual * 100) : null
+      return { time, triggers, auto, confirmed, dismissed, confirmRate }
+    })
+  }, [history])
+  const trendMax = Math.max(1, ...trendRows.map(r => r.triggers))
 
   // Auto-select the checkpoint closest to current time
   function getDefaultSelected() {
@@ -199,7 +231,25 @@ export function InspectPage({ plans, onClose }: Props) {
           style={{ background: 'rgba(255,255,255,.2)' }}>✕</button>
       </div>
 
-      {/* Layout */}
+      {/* Tabs */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '0 18px', display: 'flex', gap: 4, flexShrink: 0 }}>
+        {([['today', '🕐 今日操作台'], ['history', '📅 历史回看'], ['trend', '📈 时点趋势']] as [InspTab, string][]).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)}
+            style={{
+              padding: '10px 16px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none',
+              borderBottom: `2.5px solid ${tab === k ? '#283593' : 'transparent'}`,
+              color: tab === k ? '#283593' : '#6b7280',
+            }}>
+            {l}
+          </button>
+        ))}
+        {tab !== 'today' && (
+          <span style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 4 }}>模拟历史</span>
+        )}
+      </div>
+
+      {/* ── 今日操作台 ── */}
+      {tab === 'today' && (
       <div className="flex flex-1 overflow-hidden">
         {/* Left timeline */}
         <div className="flex-shrink-0 overflow-y-auto bg-gray-50 border-r border-gray-200 py-3"
@@ -331,6 +381,126 @@ export function InspectPage({ plans, onClose }: Props) {
           </div>
         </div>
       </div>
+      )}
+
+      {/* ── 历史回看 ── */}
+      {tab === 'history' && (
+        <div className="flex-1 overflow-y-auto p-4">
+          {/* 完成度热力条 */}
+          <div className="bg-white border border-gray-200 rounded-lg p-3 mb-4">
+            <div className="text-xs font-bold text-indigo-800 mb-2.5">📅 近 {history.length} 天巡检完成度（点击查看当天）</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {history.map(d => {
+                const sel = d.date === histDate
+                const color = d.triggers === 0 ? '#e5e7eb' : d.dismissed > 0 ? '#fbbf24' : '#34d399'
+                return (
+                  <button key={d.date} onClick={() => setHistDate(d.date)}
+                    title={`${d.date} · ${d.triggers}次触发 · 忽略${d.dismissed}`}
+                    style={{
+                      width: 56, padding: '6px 4px', borderRadius: 8, cursor: 'pointer', textAlign: 'center',
+                      border: sel ? '2px solid #283593' : '1px solid #e5e7eb', background: sel ? '#eef2ff' : '#fff',
+                    }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#374151' }}>{d.date}</div>
+                    <div style={{ height: 6, borderRadius: 3, background: color, margin: '4px 2px 3px' }} />
+                    <div style={{ fontSize: 9, color: '#9ca3af' }}>{d.triggers}次</div>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex gap-4 mt-2.5" style={{ fontSize: 10, color: '#9ca3af' }}>
+              <span><span style={{ display: 'inline-block', width: 10, height: 6, borderRadius: 3, background: '#34d399', verticalAlign: 'middle' }} /> 全部处理</span>
+              <span><span style={{ display: 'inline-block', width: 10, height: 6, borderRadius: 3, background: '#fbbf24', verticalAlign: 'middle' }} /> 有忽略</span>
+              <span><span style={{ display: 'inline-block', width: 10, height: 6, borderRadius: 3, background: '#e5e7eb', verticalAlign: 'middle' }} /> 无触发</span>
+            </div>
+          </div>
+
+          {/* 当天汇总 */}
+          {histDay && (
+            <>
+              <div className="flex items-center gap-3 mb-3 flex-wrap">
+                <span className="font-black text-indigo-800" style={{ fontSize: 22 }}>{histDay.date}</span>
+                {[['触发', histDay.triggers, '#283593'], ['自动执行', histDay.auto, '#475569'], ['人工确认', histDay.confirmed, '#2e7d32'], ['已忽略', histDay.dismissed, histDay.dismissed ? '#c62828' : '#9ca3af']].map(([l, v, c]) => (
+                  <span key={String(l)} style={{ fontSize: 12, color: '#6b7280' }}>{String(l)} <strong style={{ color: c as string, fontSize: 14 }}>{v}</strong></span>
+                ))}
+              </div>
+
+              {/* 7时点 */}
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+                {histDay.timepoints.map(tp => (
+                  <div key={tp.time} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2" style={{ background: '#f9fafb' }}>
+                      <span className="font-bold text-sm">{tp.time}</span>
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: tp.conf === 'H' ? '#e8f5e9' : tp.conf === 'M' ? '#fff8e1' : '#f5f5f5', color: tp.conf === 'H' ? '#2e7d32' : tp.conf === 'M' ? '#f57f17' : '#757575' }}>
+                        {tp.conf}置信
+                      </span>
+                      <span className="ml-auto text-xs text-gray-400">{tp.results.length}项</span>
+                    </div>
+                    <div className="p-2">
+                      {tp.results.length === 0
+                        ? <div className="text-center text-gray-300 text-xs py-3">无触发</div>
+                        : tp.results.map((r, i) => {
+                          const rd = RULE_DEFS.find(x => x.key === r.rule)
+                          const sm = statusMeta[r.status]
+                          return (
+                            <div key={i} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
+                              <span style={{ color: zoneChip[r.zone].c, fontSize: 11 }}>{zoneChip[r.zone].t}</span>
+                              <span className="font-semibold text-xs truncate" style={{ maxWidth: 90 }} title={r.plan}>{r.plan}</span>
+                              <span className="text-xs font-bold px-1.5 py-0.5 rounded-full border" style={{ fontSize: 9, background: (rd?.color || '#999') + '18', color: rd?.color || '#999', borderColor: (rd?.color || '#999') + '44' }}>{r.rule}</span>
+                              <span className="ml-auto text-xs px-1.5 py-0.5 rounded font-semibold whitespace-nowrap" style={{ fontSize: 9, background: sm.bg, color: sm.color }}>{sm.label}</span>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── 时点趋势 ── */}
+      {tab === 'trend' && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="text-xs text-gray-500 mb-3">跨 {history.length} 天聚合 · 看每个巡检时点的触发量与人工确认习惯,定位最有用 / 最常被忽略的时点。</div>
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr style={{ background: '#f9fafb' }}>
+                  {['时点', '触发量(近14天)', '🤖自动', '✅人工确认', '✗忽略', '人工确认率'].map(h => (
+                    <th key={h} className="px-3 py-2 text-left font-bold text-gray-500" style={{ borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {trendRows.map(r => (
+                  <tr key={r.time} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td className="px-3 py-2 font-bold">{r.time}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <div style={{ height: 8, width: `${Math.round(r.triggers / trendMax * 100)}%`, minWidth: 2, background: '#6366f1', borderRadius: 4 }} />
+                        <span className="font-bold text-gray-700">{r.triggers}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-gray-500">{r.auto}</td>
+                    <td className="px-3 py-2 text-green-700 font-semibold">{r.confirmed}</td>
+                    <td className="px-3 py-2" style={{ color: r.dismissed ? '#c62828' : '#9ca3af' }}>{r.dismissed}</td>
+                    <td className="px-3 py-2">
+                      {r.confirmRate == null
+                        ? <span className="text-gray-300">— 全自动</span>
+                        : <span className="font-bold" style={{ color: r.confirmRate >= 80 ? '#2e7d32' : r.confirmRate >= 50 ? '#f57f17' : '#c62828' }}>{r.confirmRate}%</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-xs text-gray-400 mt-2 leading-relaxed">
+            人工确认率低 = 该时点系统建议常被运营否决,可能阈值偏激进或时机不对,值得回查规则参数。
+          </div>
+        </div>
+      )}
     </div>
   )
 }
