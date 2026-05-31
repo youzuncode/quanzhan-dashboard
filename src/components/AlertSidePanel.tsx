@@ -220,48 +220,52 @@ export function AlertSidePanel({ plans, onClose }: Props) {
   const info = active.filter(a => a.level === 'info')
   const badgeCount = urgent.length + warning.length
 
-  function AlertItem({ a }: { a: ComputedAlert }) {
+  function AlertRow({ a }: { a: ComputedAlert }) {
     const isConfirmed = confirmed.has(a.id)
+    const [expanded, setExpanded] = useState(false)
     return (
       <div style={{
-        borderLeft: `4px solid ${a.color}`,
+        display: 'flex', alignItems: 'stretch',
         background: '#fff',
-        borderRadius: '0 8px 8px 0',
-        boxShadow: '0 1px 3px rgba(0,0,0,.06)',
+        borderLeft: `4px solid ${a.color}`,
+        borderBottom: '1px solid #f0f0f0',
         opacity: isConfirmed ? 0.5 : 1,
-        border: `1px solid ${a.color}22`,
-        borderLeftColor: a.color,
-        overflow: 'hidden',
       }}>
-        {/* Header */}
-        <div style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', background: `${a.color}0c` }}>
-          <span style={{ background: `${a.color}18`, color: a.color, border: `1px solid ${a.color}44`, fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4 }}>{a.rule}</span>
-          <span style={{ fontWeight: 600, fontSize: 11, flex: 1 }}>{a.plan}</span>
-          <span style={{ color: '#c62828', fontSize: 10, fontWeight: 600 }}>{a.deadline}</span>
+        {/* Rule badge */}
+        <div style={{ flexShrink: 0, width: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px' }}>
+          <span style={{ background: `${a.color}18`, color: a.color, border: `1px solid ${a.color}44`, fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap' }}>{a.rule}</span>
         </div>
-        {/* Body */}
-        <div style={{ padding: '6px 10px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: a.color, marginBottom: 3 }}>{a.title}</div>
-          <div style={{ fontSize: 10, color: '#555', marginBottom: 6 }}>{a.desc}</div>
-          {/* Ops bullet list */}
-          <div style={{ fontSize: 10, color: '#444', marginBottom: 8 }}>
-            {a.ops.map((op, i) => (
-              <div key={i} style={{ padding: '1px 0' }}>{i + 1}. {op}</div>
-            ))}
+        {/* Main content */}
+        <div style={{ flex: 1, minWidth: 0, padding: '8px 8px 8px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: a.color, whiteSpace: 'nowrap' }}>{a.title}</span>
+            <span style={{ fontSize: 11, color: '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.plan}</span>
+            <span style={{ color: '#c62828', fontSize: 10, fontWeight: 600, marginLeft: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }}>{a.deadline}</span>
           </div>
-          {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => setConfirmed(p => { const n = new Set(p); n.add(a.id); return n })}
-              style={{ flex: 1, padding: '4px 0', background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 5, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
-              {isConfirmed ? '✓ 已确认' : '✓ 标记已处理'}
-            </button>
-            <button
-              onClick={() => setDismissed(p => { const n = new Set(p); n.add(a.id); return n })}
-              style={{ padding: '4px 12px', background: '#f0f0f0', color: '#666', border: 'none', borderRadius: 5, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
-              跳过
-            </button>
-          </div>
+          <div style={{ fontSize: 10, color: '#666', marginTop: 3, overflow: expanded ? 'visible' : 'hidden', textOverflow: 'ellipsis', whiteSpace: expanded ? 'normal' : 'nowrap' }}>{a.desc}</div>
+          {expanded && (
+            <div style={{ fontSize: 10, color: '#444', marginTop: 6, paddingLeft: 2 }}>
+              {a.ops.map((op, i) => (
+                <div key={i} style={{ padding: '1px 0' }}>{i + 1}. {op}</div>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setExpanded(e => !e)} style={{ fontSize: 9.5, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0 0', fontWeight: 600 }}>
+            {expanded ? '收起 ▲' : `操作建议 ${a.ops.length}项 ▼`}
+          </button>
+        </div>
+        {/* Action buttons */}
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px' }}>
+          <button
+            onClick={() => setConfirmed(p => { const n = new Set(p); n.add(a.id); return n })}
+            style={{ padding: '4px 10px', background: isConfirmed ? '#e8f5e9' : '#2e7d32', color: isConfirmed ? '#2e7d32' : '#fff', border: 'none', borderRadius: 5, fontSize: 10, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {isConfirmed ? '✓ 已确认' : '✓ 处理'}
+          </button>
+          <button
+            onClick={() => setDismissed(p => { const n = new Set(p); n.add(a.id); return n })}
+            style={{ padding: '4px 10px', background: '#f0f0f0', color: '#666', border: 'none', borderRadius: 5, fontSize: 10, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            跳过
+          </button>
         </div>
       </div>
     )
@@ -270,13 +274,13 @@ export function AlertSidePanel({ plans, onClose }: Props) {
   function Section({ title, arr, color }: { title: string; arr: ComputedAlert[]; color: string }) {
     if (arr.length === 0) return null
     return (
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
           {title}
           <span style={{ background: `${color}22`, color, padding: '1px 7px', borderRadius: 10, fontSize: 10 }}>{arr.length}</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 10 }}>
-          {arr.map(a => <AlertItem key={a.id} a={a} />)}
+        <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+          {arr.map(a => <AlertRow key={a.id} a={a} />)}
         </div>
       </div>
     )
