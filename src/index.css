@@ -12,10 +12,10 @@
   --red: #c62828;
   --red-lt: #ffebee;
   --red-bg: #ffcdd2;
-  --blue: #1565c0;
+  --blue: #1a73e8;
   --blue-lt: #e3f2fd;
-  --indigo: #283593;
-  --indigo-lt: #e8eaf6;
+  --indigo: #1557b0;
+  --indigo-lt: #e8f0fe;
   --gray: #546e7a;
   --gray-lt: #eceff1;
   --text: #212121;
@@ -28,7 +28,7 @@
 
 body {
   font-family: var(--font);
-  background: #f0f4f8;
+  background: #f6f8fa;
   color: var(--text);
 }
 

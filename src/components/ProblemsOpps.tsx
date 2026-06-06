@@ -60,15 +60,15 @@ export function ProblemsOpps({ probs = probsData, opps = oppsData, algos = algoD
 
       {/* Algorithm */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="px-3 py-2 font-bold text-xs border-b border-indigo-100 bg-indigo-50 text-indigo-800">
+        <div className="px-3 py-2 font-bold text-xs border-b border-blue-100 bg-blue-50 text-blue-800">
           🔧 算法调整方向
         </div>
         <div className="p-2 space-y-2 max-h-60 overflow-y-auto">
           {algos.map((a, i) => (
-            <div key={i} className="rounded-lg border border-indigo-100 p-2.5 bg-indigo-50">
+            <div key={i} className="rounded-lg border border-blue-100 p-2.5 bg-blue-50">
               <div className="font-bold text-xs mb-1">{a.title}</div>
               <div className="text-xs text-gray-600 mb-1.5">{a.detail}</div>
-              <div className="text-xs font-mono px-2 py-1 rounded bg-white border border-indigo-200 text-indigo-800">
+              <div className="text-xs font-mono px-2 py-1 rounded bg-white border border-blue-200 text-blue-800">
                 {a.formula}
               </div>
             </div>

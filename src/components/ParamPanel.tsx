@@ -2,17 +2,17 @@ import { paramOps } from '../lib/mockData'
 import type { ParamOp } from '../lib/mockData'
 
 const clsBorder: Record<string, string> = {
-  act: 'border-indigo-300 bg-indigo-50',
+  act: 'border-blue-300 bg-blue-50',
   ok: 'border-green-300 bg-green-50',
   warn: 'border-yellow-300 bg-yellow-50',
 }
 const clsHeader: Record<string, string> = {
-  act: 'text-indigo-800 bg-indigo-100',
+  act: 'text-blue-800 bg-blue-100',
   ok: 'text-green-800 bg-green-100',
   warn: 'text-yellow-800 bg-yellow-100',
 }
 const badgeCls: Record<string, string> = {
-  roi: 'bg-indigo-100 text-indigo-800',
+  roi: 'bg-blue-100 text-blue-800',
   bgt: 'bg-green-100 text-green-800',
   mode: 'bg-yellow-100 text-yellow-800',
   guard: 'bg-blue-100 text-blue-800',

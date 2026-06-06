@@ -57,9 +57,9 @@ export function ActionLog({ logs }: Props) {
                   <td className="px-2.5 py-1.5 text-gray-400 whitespace-nowrap">
                     {format(new Date(l.created_at), 'MM-dd HH:mm')}
                   </td>
-                  <td className="px-2.5 py-1.5 font-semibold text-indigo-800">{l.plan_name}</td>
+                  <td className="px-2.5 py-1.5 font-semibold text-blue-800">{l.plan_name}</td>
                   <td className="px-2.5 py-1.5">
-                    <span className="bg-indigo-50 text-indigo-800 px-1.5 py-0.5 rounded font-bold">{l.rule_code}</span>
+                    <span className="bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded font-bold">{l.rule_code}</span>
                   </td>
                   <td className="px-2.5 py-1.5 text-gray-700">{l.action}</td>
                   <td className="px-2.5 py-1.5">

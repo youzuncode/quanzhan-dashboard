@@ -64,7 +64,7 @@ export function TodoQueue({ plans, storeConfig, onSelectPlan }: Props) {
             </span>
           )}
           <button onClick={() => setCollapsed(c => !c)}
-            style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+            style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#f6f8fa', color: '#6b7280', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
             {collapsed ? '展开' : '收起'}
           </button>
         </div>
@@ -112,7 +112,7 @@ export function TodoQueue({ plans, storeConfig, onSelectPlan }: Props) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5" style={{ textDecoration: isDone ? 'line-through' : 'none' }}>
                     <span style={{ fontSize: 12, fontWeight: 700 }}>{it.title}</span>
-                    <span style={{ fontSize: 11, color: '#4338ca', fontWeight: 600 }} className="truncate">{it.plan}</span>
+                    <span style={{ fontSize: 11, color: '#1557b0', fontWeight: 600 }} className="truncate">{it.plan}</span>
                     {it.pending && !isDone && <span style={{ fontSize: 9, color: '#f57f17', background: '#fff8e1', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>待确认</span>}
                   </div>
                   <div className="text-gray-500 truncate" style={{ fontSize: 10.5 }} title={it.action}>{it.rule} · {it.action}</div>

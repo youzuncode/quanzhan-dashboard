@@ -58,7 +58,7 @@ export function PlanEditModal({ plan, onSave, onClose }: Props) {
       <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
         <div className="bg-white rounded-2xl shadow-2xl w-96 pointer-events-auto overflow-hidden">
           {/* Header */}
-          <div style={{ background: 'linear-gradient(135deg,#283593,#1565c0)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ background: 'linear-gradient(135deg,#1557b0,#1a73e8)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>✏️ 编辑计划参数</div>
               <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 11, marginTop: 2 }}>{plan.name}</div>
@@ -77,7 +77,7 @@ export function PlanEditModal({ plan, onSave, onClose }: Props) {
                 value={roi}
                 onChange={e => setRoi(e.target.value)}
                 style={{ width: '100%', border: '1.5px solid #d1d5db', borderRadius: 8, padding: '7px 10px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                onFocus={e => (e.target.style.borderColor = '#1a73e8')}
                 onBlur={e => (e.target.style.borderColor = '#d1d5db')}
               />
               <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 3 }}>
@@ -95,7 +95,7 @@ export function PlanEditModal({ plan, onSave, onClose }: Props) {
                 value={budget}
                 onChange={e => setBudget(e.target.value)}
                 style={{ width: '100%', border: '1.5px solid #d1d5db', borderRadius: 8, padding: '7px 10px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                onFocus={e => (e.target.style.borderColor = '#1a73e8')}
                 onBlur={e => (e.target.style.borderColor = '#d1d5db')}
               />
               <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 3 }}>当前花费 ¥{plan.spend.toLocaleString()}</div>
@@ -111,7 +111,7 @@ export function PlanEditModal({ plan, onSave, onClose }: Props) {
                 value={gross}
                 onChange={e => setGross(e.target.value)}
                 style={{ width: '100%', border: '1.5px solid #d1d5db', borderRadius: 8, padding: '7px 10px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                onFocus={e => (e.target.style.borderColor = '#1a73e8')}
                 onBlur={e => (e.target.style.borderColor = '#d1d5db')}
               />
               <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 3 }}>
@@ -151,8 +151,8 @@ export function PlanEditModal({ plan, onSave, onClose }: Props) {
                       费比 {(plan.febi * 100).toFixed(1)}% · 预算¥{plan.budget.toLocaleString()}
                     </div>
                   </div>
-                  <div style={{ background: '#fff', borderRadius: 6, padding: '6px 8px', border: '1px solid #c7d2fe' }}>
-                    <div style={{ color: '#6366f1', fontSize: 9, marginBottom: 2, fontWeight: 600 }}>修改后预计今日盈亏</div>
+                  <div style={{ background: '#fff', borderRadius: 6, padding: '6px 8px', border: '1px solid #d2e3fc' }}>
+                    <div style={{ color: '#1a73e8', fontSize: 9, marginBottom: 2, fontWeight: 600 }}>修改后预计今日盈亏</div>
                     <div style={{ fontWeight: 800, fontSize: 13, color: projectedNewPnl >= 0 ? colorPos : colorNeg }}>
                       {fmtMoney(projectedNewPnl)}
                     </div>
@@ -184,7 +184,7 @@ export function PlanEditModal({ plan, onSave, onClose }: Props) {
               <button onClick={onClose} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>
                 取消
               </button>
-              <button onClick={handleSave} style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#283593,#1565c0)', color: '#fff', cursor: 'pointer' }}>
+              <button onClick={handleSave} style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#1557b0,#1a73e8)', color: '#fff', cursor: 'pointer' }}>
                 保存修改
               </button>
             </div>

@@ -143,7 +143,7 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
 
   function Th({ k, children }: { k: SortKey; children: React.ReactNode }) {
     return (
-      <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500 cursor-pointer hover:text-indigo-800 select-none whitespace-nowrap"
+      <th className="px-2 py-1.5 text-left text-xs font-bold text-gray-500 cursor-pointer hover:text-blue-800 select-none whitespace-nowrap"
         onClick={() => toggleSort(k)}>
         {children} {sortKey === k ? (sortAsc ? '↑' : '↓') : ''}
       </th>
@@ -183,21 +183,21 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
               {filtered.length === planData.length ? `${planData.length}个计划` : `${filtered.length}/${planData.length}个`}
             </span>
             {selectedNames.size > 0 && (
-              <span className="text-indigo-600 font-normal">已选{selectedNames.size}个</span>
+              <span className="text-blue-600 font-normal">已选{selectedNames.size}个</span>
             )}
           </div>
           <div className="flex items-center gap-2">
             {selectedNames.size >= 2 && (
               <button
                 onClick={() => setShowCompare(true)}
-                style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: '#e8eaf6', color: '#283593', border: '1px solid #c5cae9', cursor: 'pointer' }}>
+                style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: '#e8f0fe', color: '#1557b0', border: '1px solid #d2e3fc', cursor: 'pointer' }}>
                 📊 对比选中({selectedNames.size})
               </button>
             )}
             {selectedNames.size > 0 && (
               <button
                 onClick={() => setSelectedNames(new Set())}
-                style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+                style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#f6f8fa', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
                 清除选择
               </button>
             )}
@@ -218,7 +218,7 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
               onChange={e => setSearch(e.target.value)}
               placeholder="🔍 搜索计划名或规则…"
               style={{ width: '100%', padding: '4px 28px 4px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 11, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
-              onFocus={e => (e.target.style.borderColor = '#6366f1')}
+              onFocus={e => (e.target.style.borderColor = '#1a73e8')}
               onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
             />
             {search && (
@@ -237,9 +237,9 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
                 <button key={z} onClick={() => setZoneFilter(z)}
                   style={{
                     padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, cursor: 'pointer',
-                    border: `1px solid ${active ? '#6366f1' : '#e5e7eb'}`,
-                    background: active ? '#eef2ff' : '#fff',
-                    color: active ? '#4338ca' : '#6b7280',
+                    border: `1px solid ${active ? '#1a73e8' : '#e5e7eb'}`,
+                    background: active ? '#e8f0fe' : '#fff',
+                    color: active ? '#1557b0' : '#6b7280',
                   }}>
                   {labels[z]}
                 </button>
@@ -267,7 +267,7 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
 
           {(search || zoneFilter !== 'all' || ruleFilter !== 'all') && (
             <button onClick={() => { setSearch(''); setZoneFilter('all'); setRuleFilter('all') }}
-              style={{ padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', cursor: 'pointer', marginLeft: 'auto' }}>
+              style={{ padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600, background: '#f6f8fa', color: '#6b7280', border: '1px solid #e5e7eb', cursor: 'pointer', marginLeft: 'auto' }}>
               ⟲ 清除筛选
             </button>
           )}
@@ -311,7 +311,7 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
                     没有符合筛选条件的计划
                     {(search || zoneFilter !== 'all' || ruleFilter !== 'all') && (
                       <button onClick={() => { setSearch(''); setZoneFilter('all'); setRuleFilter('all') }}
-                        style={{ marginLeft: 10, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 700, background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe', cursor: 'pointer' }}>
+                        style={{ marginLeft: 10, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 700, background: '#e8f0fe', color: '#1557b0', border: '1px solid #d2e3fc', cursor: 'pointer' }}>
                         清除筛选
                       </button>
                     )}
@@ -327,13 +327,13 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
                 const isSelected = selectedNames.has(p.name)
                 return (
                   <tr key={p.name}
-                    className={`border-b border-gray-100 hover:brightness-95 cursor-pointer ${s.row} ${isSelected ? 'ring-2 ring-inset ring-indigo-400' : ''}`}
+                    className={`border-b border-gray-100 hover:brightness-95 cursor-pointer ${s.row} ${isSelected ? 'ring-2 ring-inset ring-blue-400' : ''}`}
                     onClick={() => onSelectPlan?.(p.name)}>
                     {/* Checkbox */}
                     <td className="px-2 py-1.5" onClick={e => toggleSelect(p.name, e)}>
                       <div style={{
-                        width: 16, height: 16, borderRadius: 4, border: `2px solid ${isSelected ? '#3b82f6' : '#d1d5db'}`,
-                        background: isSelected ? '#3b82f6' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: 16, height: 16, borderRadius: 4, border: `2px solid ${isSelected ? '#1a73e8' : '#d1d5db'}`,
+                        background: isSelected ? '#1a73e8' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
                         cursor: 'pointer', flexShrink: 0,
                       }}>
                         {isSelected && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1, fontWeight: 900 }}>✓</span>}
@@ -344,7 +344,7 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
                         {zoneLabel[p.zone]}
                       </span>
                     </td>
-                    <td className="px-2 py-1.5 font-semibold text-indigo-800 hover:underline whitespace-nowrap">{p.name}</td>
+                    <td className="px-2 py-1.5 font-semibold text-blue-800 hover:underline whitespace-nowrap">{p.name}</td>
                     <td className="px-2 py-1.5">
                       <div className="font-bold">{p.roiTarget}</div>
                       <div className="text-gray-400">止损{stopLossRoi}</div>
@@ -374,14 +374,14 @@ export function PlanTable({ plans: initialPlans, onSelectPlan }: Props) {
                     <td className="px-2 py-1.5">{getRuleBadge(p.rule, p.zone)}</td>
                     <td className="px-2 py-1.5">
                       {p.action.split('\n').map((line, i) => (
-                        <div key={i} className={`text-xs ${i === 0 ? 'text-indigo-800 font-semibold' : line.includes('待') ? 'text-orange-700' : 'text-gray-500'}`}>
+                        <div key={i} className={`text-xs ${i === 0 ? 'text-blue-800 font-semibold' : line.includes('待') ? 'text-orange-700' : 'text-gray-500'}`}>
                           {line}
                         </div>
                       ))}
                     </td>
                     {/* Edit button */}
                     <td className="px-2 py-1.5" onClick={e => handleEdit(p, e)}>
-                      <button style={{ padding: '3px 7px', borderRadius: 5, fontSize: 10, fontWeight: 700, background: '#f0f4ff', color: '#3730a3', border: '1px solid #c7d2fe', cursor: 'pointer' }}>
+                      <button style={{ padding: '3px 7px', borderRadius: 5, fontSize: 10, fontWeight: 700, background: '#e8f0fe', color: '#1557b0', border: '1px solid #d2e3fc', cursor: 'pointer' }}>
                         ✏️
                       </button>
                     </td>

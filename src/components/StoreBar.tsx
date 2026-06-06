@@ -26,7 +26,7 @@ function computeStoreMetrics(store: Props['storeConfig'], plans: Props['storePla
   let mode: string, mc: string, mbg: string, mBorder: string
   const diff = store.weeklyNetProfit - store.weeklyTarget
   if (diff > 0.05)       { mode = '🟢 宽松';  mc = '#2e7d32'; mbg = '#e8f5e9'; mBorder = '#2e7d32' }
-  else if (diff > 0.02)  { mode = '🔵 达标';  mc = '#1565c0'; mbg = '#e3f2fd'; mBorder = '#1565c0' }
+  else if (diff > 0.02)  { mode = '🔵 达标';  mc = '#1a73e8'; mbg = '#e3f2fd'; mBorder = '#1a73e8' }
   else if (diff >= 0)    { mode = '🟡 紧张';  mc = '#f57f17'; mbg = '#fff8e1'; mBorder = '#f57f17' }
   else if (diff > -0.03) { mode = '🟠 收紧';  mc = '#e65100'; mbg = '#fff3e0'; mBorder = '#e65100' }
   else                   { mode = '🔴 强收紧'; mc = '#c62828'; mbg = '#ffebee'; mBorder = '#c62828' }
@@ -68,7 +68,7 @@ export function StoreBar({ storeConfig, storePlans }: Props) {
 
       {/* 全店ROI */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#283593' }}>{m.storeROI.toFixed(2)}</div>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#1557b0' }}>{m.storeROI.toFixed(2)}</div>
         <div style={{ color: '#999' }}>全店ROI</div>
       </div>
 

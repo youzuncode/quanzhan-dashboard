@@ -24,7 +24,7 @@ const hc = hist14.filter(d => d.conf === 'H').length
 const r5 = hist14.slice(-5).map(d => d.mape); const p5 = r5.reduce((a, b) => a + b) / r5.length
 const r9 = hist14.slice(0, 9).map(d => d.mape); const p9 = r9.reduce((a, b) => a + b) / r9.length
 const trend14 = p5 < p9 - 1 ? '改善' : p5 > p9 + 1 ? '恶化' : '稳定'
-const trendColor = { '改善': '#2e7d32', '恶化': '#c62828', '稳定': '#283593' }[trend14]
+const trendColor = { '改善': '#2e7d32', '恶化': '#c62828', '稳定': '#1557b0' }[trend14]
 
 const trendLabel: Record<string, string> = { imp: '改善↑', deg: '恶化↓', stb: '稳定' }
 
@@ -58,7 +58,7 @@ export function ChartPanel({ plans = defaultPlans, planErrData = planErr }: Prop
                 onClick={() => setForecastTab(k)}
                 style={{
                   padding: '4px 10px', fontSize: 10, borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: 600,
-                  background: forecastTab === k ? '#283593' : 'transparent',
+                  background: forecastTab === k ? '#1557b0' : 'transparent',
                   color: forecastTab === k ? '#fff' : '#888',
                 }}>
                 {l}
@@ -83,7 +83,7 @@ export function ChartPanel({ plans = defaultPlans, planErrData = planErr }: Prop
                   <XAxis dataKey="hour" tick={{ fontSize: 9 }} />
                   <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip formatter={(v) => typeof v === 'number' ? `¥${v.toLocaleString('zh-CN')}` : v} />
-                  <Line type="monotone" dataKey="predicted" stroke="#1565c0" strokeWidth={2} dot={false} name="预测花费" connectNulls />
+                  <Line type="monotone" dataKey="predicted" stroke="#1a73e8" strokeWidth={2} dot={false} name="预测花费" connectNulls />
                   <Line type="monotone" dataKey="actual" stroke="#2e7d32" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3 }} name="实际花费" connectNulls />
                 </LineChart>
               </ResponsiveContainer>
@@ -157,7 +157,7 @@ export function ChartPanel({ plans = defaultPlans, planErrData = planErr }: Prop
                     const barW = Math.min(100, e.mape / 35 * 100)
                     const bc = e.mape < 15 ? '#2e7d32' : e.mape < 25 ? '#f57f17' : '#c62828'
                     const confCls = { H: { bg: '#e8f5e9', c: '#2e7d32' }, M: { bg: '#fff8e1', c: '#f57f17' }, L: { bg: '#ffebee', c: '#c62828' } }[e.conf]
-                    const trendCls = { imp: { bg: '#e8f5e9', c: '#2e7d32' }, stb: { bg: '#e3f2fd', c: '#1565c0' }, deg: { bg: '#ffebee', c: '#c62828' } }[e.trend]
+                    const trendCls = { imp: { bg: '#e8f5e9', c: '#2e7d32' }, stb: { bg: '#e3f2fd', c: '#1a73e8' }, deg: { bg: '#ffebee', c: '#c62828' } }[e.trend]
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
                         <td style={{ padding: '4px 6px', fontWeight: 600 }}>{e.name}</td>
@@ -173,7 +173,7 @@ export function ChartPanel({ plans = defaultPlans, planErrData = planErr }: Prop
                         <td style={{ padding: '4px 6px', textAlign: 'center' }}>
                           <span style={{ background: trendCls.bg, color: trendCls.c, padding: '1px 6px', borderRadius: 4, fontWeight: 700, fontSize: 9 }}>{trendLabel[e.trend]}</span>
                         </td>
-                        <td style={{ padding: '4px 6px', textAlign: 'right', color: e.bias === '偏高' ? '#c62828' : '#1565c0', fontSize: 10 }}>
+                        <td style={{ padding: '4px 6px', textAlign: 'right', color: e.bias === '偏高' ? '#c62828' : '#1a73e8', fontSize: 10 }}>
                           {e.bias} {e.biasAmt}
                         </td>
                       </tr>
@@ -226,7 +226,7 @@ export function ChartPanel({ plans = defaultPlans, planErrData = planErr }: Prop
               const isRed = r.roi === 4
               const isYellow = r.roi === 5
               const isGreen = r.roi >= 8
-              const rowBg = isActive ? '#283593' : isRed ? '#ffebee' : isYellow ? '#fff8e1' : isGreen ? '#e8f5e9' : '#f8f8f8'
+              const rowBg = isActive ? '#1557b0' : isRed ? '#ffebee' : isYellow ? '#fff8e1' : isGreen ? '#e8f5e9' : '#f8f8f8'
               const rowColor = isActive ? '#fff' : isRed ? '#c62828' : isYellow ? '#f57f17' : isGreen ? '#2e7d32' : '#444'
               return (
                 <div key={r.roi} style={{ display: 'flex', justifyContent: 'space-between', background: rowBg, color: rowColor, padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: isActive ? 800 : 600 }}>

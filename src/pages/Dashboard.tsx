@@ -50,7 +50,7 @@ export function Dashboard() {
   const tps = isMain ? timepoints : generateTimepoints(sp)
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f4f8' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: '#f6f8fa' }}>
       <TopBar
         onOpenRuleEngine={() => setShowRuleEngine(true)}
         onOpenInspection={() => setShowInspect(true)}
@@ -72,14 +72,14 @@ export function Dashboard() {
             <button key={t.k} onClick={() => setView(t.k)}
               style={{
                 padding: '10px 18px 9px',
-                color: active ? '#3730a3' : '#6b7280',
+                color: active ? '#1557b0' : '#6b7280',
                 background: 'none',
                 border: 'none',
-                borderBottom: `2.5px solid ${active ? '#3730a3' : 'transparent'}`,
+                borderBottom: `2.5px solid ${active ? '#1557b0' : 'transparent'}`,
                 cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
               }}>
               <span style={{ fontSize: 13, fontWeight: 700 }}>{t.label}</span>
-              <span style={{ fontSize: 9.5, color: active ? '#6366f1' : '#9ca3af', fontWeight: 500 }}>{t.sub}</span>
+              <span style={{ fontSize: 9.5, color: active ? '#1a73e8' : '#9ca3af', fontWeight: 500 }}>{t.sub}</span>
             </button>
           )
         })}

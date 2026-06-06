@@ -126,7 +126,7 @@ export function InspectionPanel({ timepoints = defaultTimepoints }: Props) {
       <div className="flex" style={{ minHeight: 320 }}>
         {/* Left nav */}
         <div className="w-32 border-r border-gray-100 bg-gray-50 flex-shrink-0">
-          <div className="px-3 py-2 text-xs font-bold text-indigo-800 bg-indigo-50 border-b border-gray-100">巡检时点</div>
+          <div className="px-3 py-2 text-xs font-bold text-blue-800 bg-blue-50 border-b border-gray-100">巡检时点</div>
           {timepoints.map((tp, idx) => {
             const dot = getDotStatus(idx)
             const pending = getPendingCount(tp)
@@ -137,8 +137,8 @@ export function InspectionPanel({ timepoints = defaultTimepoints }: Props) {
                 key={tp.time}
                 onClick={() => setActiveIdx(idx)}
                 className={`px-2.5 py-2 cursor-pointer border-b border-gray-100 relative transition-colors
-                  ${activeIdx === idx ? 'bg-indigo-50 border-r-2 border-r-indigo-800' : 'hover:bg-blue-50'}`}>
-                <div className={`text-xs font-bold ${activeIdx === idx ? 'text-indigo-800' : 'text-gray-600'}`}>{tp.time}</div>
+                  ${activeIdx === idx ? 'bg-blue-50 border-r-2 border-r-blue-800' : 'hover:bg-blue-50'}`}>
+                <div className={`text-xs font-bold ${activeIdx === idx ? 'text-blue-800' : 'text-gray-600'}`}>{tp.time}</div>
                 <div className="text-xs text-gray-400">{tp.name}</div>
                 <div className="text-xs mt-0.5">
                   {pending > 0
@@ -168,7 +168,7 @@ export function InspectionPanel({ timepoints = defaultTimepoints }: Props) {
             {getPendingCount(activeTp) > 0 && (
               <button
                 onClick={() => confirmAll(activeTp)}
-                className="text-xs px-3 py-1 rounded-lg bg-indigo-800 text-white font-semibold">
+                className="text-xs px-3 py-1 rounded-lg bg-blue-800 text-white font-semibold">
                 ✓ 一键确认全部 ({getPendingCount(activeTp)})
               </button>
             )}
@@ -202,7 +202,7 @@ export function InspectionPanel({ timepoints = defaultTimepoints }: Props) {
                   {/* Body */}
                   <div className="px-3 py-2 bg-white text-xs space-y-1.5">
                     <div className="text-gray-600"><span className="font-semibold text-gray-700">触发：</span>{r.trigger}</div>
-                    <div className="bg-indigo-50 text-indigo-800 font-semibold px-2 py-1 rounded">⚙️ {r.actionText}</div>
+                    <div className="bg-blue-50 text-blue-800 font-semibold px-2 py-1 rounded">⚙️ {r.actionText}</div>
 
                     {/* Action buttons */}
                     {status === 'pending' && r.type === 'confirm' && (
@@ -224,7 +224,7 @@ export function InspectionPanel({ timepoints = defaultTimepoints }: Props) {
                               onChange={e => setNotes(p => ({ ...p, [r.id]: e.target.value }))}
                             />
                             <button onClick={() => confirmAction(r, activeTp, true)}
-                              className="px-2 py-1 rounded bg-indigo-800 text-white text-xs">确认</button>
+                              className="px-2 py-1 rounded bg-blue-800 text-white text-xs">确认</button>
                           </div>
                         )}
                       </div>
@@ -260,7 +260,7 @@ export function InspectionPanel({ timepoints = defaultTimepoints }: Props) {
                               <span className="text-gray-600 w-28 shrink-0">{param.key}</span>
                               <span className="text-gray-500">{param.before}</span>
                               <span className="text-gray-400">→</span>
-                              <span className={`font-bold ${param.dir === 'up' ? 'text-green-700' : param.dir === 'down' ? 'text-red-700' : 'text-indigo-800'}`}>
+                              <span className={`font-bold ${param.dir === 'up' ? 'text-green-700' : param.dir === 'down' ? 'text-red-700' : 'text-blue-800'}`}>
                                 {param.after}
                               </span>
                               <span className="ml-auto text-gray-400 text-xs">{param.change}</span>

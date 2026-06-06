@@ -73,8 +73,8 @@ export function KPICards({ storeConfig: store, storePlans: plans }: Props) {
     green: { bar: '#2e7d32', val: '#2e7d32' },
     yellow: { bar: '#f57f17', val: '#f57f17' },
     red: { bar: '#c62828', val: '#c62828' },
-    blue: { bar: '#1565c0', val: '#1565c0' },
-    indigo: { bar: '#283593', val: '#283593' },
+    blue: { bar: '#1a73e8', val: '#1a73e8' },
+    indigo: { bar: '#1557b0', val: '#1557b0' },
   }
 
   return (

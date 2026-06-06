@@ -47,7 +47,7 @@ export function ActionLogPage({ entries, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col">
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0d3c61,#1a5f8a)', padding: '12px 18px', color: '#fff', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+      <div style={{ background: 'linear-gradient(135deg,#11294d,#1557b0)', padding: '12px 18px', color: '#fff', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
         <button onClick={onClose}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)', color: '#fff', cursor: 'pointer' }}>
           <ArrowLeft size={13} /> 返回看板
@@ -70,7 +70,7 @@ export function ActionLogPage({ entries, onClose }: Props) {
             onChange={e => setSearch(e.target.value)}
             placeholder="🔍 搜索计划/规则/操作内容/备注…"
             style={{ width: '100%', padding: '6px 28px 6px 12px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
-            onFocus={e => (e.target.style.borderColor = '#6366f1')}
+            onFocus={e => (e.target.style.borderColor = '#1a73e8')}
             onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
           />
           {search && (
@@ -94,9 +94,9 @@ export function ActionLogPage({ entries, onClose }: Props) {
               <button key={t} onClick={() => setTypeFilter(t)}
                 style={{
                   padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                  border: `1px solid ${active ? '#6366f1' : '#e5e7eb'}`,
-                  background: active ? '#eef2ff' : '#fff',
-                  color: active ? '#4338ca' : '#6b7280',
+                  border: `1px solid ${active ? '#1a73e8' : '#e5e7eb'}`,
+                  background: active ? '#e8f0fe' : '#fff',
+                  color: active ? '#1557b0' : '#6b7280',
                 }}>
                 {labels[t]} {n > 0 && <span style={{ opacity: 0.7 }}>{n}</span>}
               </button>
@@ -127,7 +127,7 @@ export function ActionLogPage({ entries, onClose }: Props) {
                     没有符合筛选条件的日志
                     {(search || typeFilter !== 'all') && (
                       <button onClick={() => { setSearch(''); setTypeFilter('all') }}
-                        style={{ marginLeft: 10, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 700, background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe', cursor: 'pointer' }}>
+                        style={{ marginLeft: 10, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 700, background: '#e8f0fe', color: '#1557b0', border: '1px solid #d2e3fc', cursor: 'pointer' }}>
                         清除筛选
                       </button>
                     )}
@@ -141,8 +141,8 @@ export function ActionLogPage({ entries, onClose }: Props) {
                     <td className="px-3 py-2 whitespace-nowrap font-semibold">{l.time}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{l.timepoint}</td>
                     <td className="px-3 py-2 font-semibold whitespace-nowrap">{l.plan}</td>
-                    <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold" style={{ fontSize: 9 }}>{l.rule}</span></td>
-                    <td className="px-3 py-2 text-indigo-800" style={{ fontSize: 11, maxWidth: 380 }}>
+                    <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-bold" style={{ fontSize: 9 }}>{l.rule}</span></td>
+                    <td className="px-3 py-2 text-blue-800" style={{ fontSize: 11, maxWidth: 380 }}>
                       <span title={l.action} className="block truncate">{l.action}</span>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">

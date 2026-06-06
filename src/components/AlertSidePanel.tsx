@@ -250,7 +250,7 @@ export function AlertSidePanel({ plans, onClose }: Props) {
               ))}
             </div>
           )}
-          <button onClick={() => setExpanded(e => !e)} style={{ fontSize: 9.5, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0 0', fontWeight: 600 }}>
+          <button onClick={() => setExpanded(e => !e)} style={{ fontSize: 9.5, color: '#1a73e8', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0 0', fontWeight: 600 }}>
             {expanded ? '收起 ▲' : `操作建议 ${a.ops.length}项 ▼`}
           </button>
         </div>
@@ -289,7 +289,7 @@ export function AlertSidePanel({ plans, onClose }: Props) {
   return (
     <>
       {/* Full-screen page */}
-      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: '#f3f4f6' }}>
+      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: '#f6f8fa' }}>
         {/* Header */}
         <div style={{ padding: '12px 18px', background: 'linear-gradient(135deg, #c62828, #e53935)', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
           <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.3)', color: '#fff', cursor: 'pointer' }}>
@@ -335,7 +335,7 @@ export function AlertSidePanel({ plans, onClose }: Props) {
                     <div key={a.id} style={{ fontSize: 11, color: '#bbb', padding: '4px 8px', background: '#fff', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.rule} · {a.plan} · {a.title}</span>
                       <button onClick={() => setDismissed(p => { const n = new Set(p); n.delete(a.id); return n })}
-                        style={{ fontSize: 10, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>恢复</button>
+                        style={{ fontSize: 10, color: '#1a73e8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>恢复</button>
                     </div>
                   ))}
                 </div>
@@ -360,7 +360,7 @@ export function AlertSidePanel({ plans, onClose }: Props) {
                   defaultValue={webhookUrl}
                   placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
                   style={{ width: '100%', border: '1.5px solid #d1d5db', borderRadius: 8, padding: '8px 10px', fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
-                  onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                  onFocus={e => (e.target.style.borderColor = '#1a73e8')}
                   onBlur={e => (e.target.style.borderColor = '#d1d5db')}
                 />
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>

@@ -14,7 +14,7 @@ const ovLabel = { high: '高', mid: '中', low: '低' }
 const ovColor = { high: '#c62828', mid: '#f57f17', low: '#2e7d32' }
 const roleStyle: Record<Role, { bg: string; color: string }> = {
   主推: { bg: '#e8f5e9', color: '#2e7d32' },
-  防御: { bg: '#e3f2fd', color: '#1565c0' },
+  防御: { bg: '#e3f2fd', color: '#1a73e8' },
   清仓: { bg: '#fff3e0', color: '#e65100' },
 }
 
@@ -84,7 +84,7 @@ export function CoopetitionPage({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col">
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#4338ca,#6d28d9)', padding: '12px 18px', color: '#fff', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+      <div style={{ background: 'linear-gradient(135deg,#1557b0,#1a73e8)', padding: '12px 18px', color: '#fff', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
         <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)', color: '#fff', cursor: 'pointer' }}>
           <ArrowLeft size={13} /> 返回看板
         </button>
@@ -99,7 +99,7 @@ export function CoopetitionPage({ onClose }: Props) {
       </div>
 
       {/* 说明条 */}
-      <div style={{ flexShrink: 0, background: '#faf5ff', borderBottom: '1px solid #f3e8ff', padding: '6px 18px', fontSize: 11, color: '#6b21a8' }}>
+      <div style={{ flexShrink: 0, background: '#f6f8fa', borderBottom: '1px solid #e8f0fe', padding: '6px 18px', fontSize: 11, color: '#1557b0' }}>
         前台商品(skuId)各店独立、不可跨店比对 — 这里以<strong>条码(69码)</strong>为唯一锚点归并同款。原则:<strong>低重叠放开竞争,碰撞点协同。</strong>
       </div>
 

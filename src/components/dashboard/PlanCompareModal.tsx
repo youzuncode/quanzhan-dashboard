@@ -50,7 +50,7 @@ export function PlanCompareModal({ plans, onClose }: Props) {
       <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-6">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-full overflow-auto pointer-events-auto">
           {/* Header */}
-          <div style={{ background: 'linear-gradient(135deg,#283593,#1565c0)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
+          <div style={{ background: 'linear-gradient(135deg,#1557b0,#1a73e8)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
             <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>📊 多计划横向对比</div>
             <button onClick={onClose} style={{ color: 'rgba(255,255,255,.8)', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
           </div>

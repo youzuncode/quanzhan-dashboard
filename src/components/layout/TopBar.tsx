@@ -29,7 +29,7 @@ export function TopBar({ onOpenRuleEngine, onOpenInspection, onOpenAlerts, onOpe
 
   return (
     <div className="flex items-center justify-between px-5 py-3 text-white flex-shrink-0 relative"
-      style={{ background: 'linear-gradient(135deg,#0d3c61,#1a5f8a)' }}>
+      style={{ background: '#11294d', borderBottom: '2px solid #1a73e8' }}>
       {/* Left: title */}
       <div>
         <h1 className="text-base font-bold tracking-wide">🚀 全站推广决策看板 <span className="text-xs opacity-70">v3.5</span></h1>
@@ -59,7 +59,7 @@ export function TopBar({ onOpenRuleEngine, onOpenInspection, onOpenAlerts, onOpe
                 <button
                   key={s.id}
                   onClick={() => { onSelectStore(s.id); setShowStorePicker(false) }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-indigo-50 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-blue-50 transition-colors"
                   style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <span style={{ background: s.tagColor, color: '#fff', fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 10, flexShrink: 0 }}>
                     {s.tag}
@@ -68,7 +68,7 @@ export function TopBar({ onOpenRuleEngine, onOpenInspection, onOpenAlerts, onOpe
                     <div className="text-sm font-bold text-gray-800"
                       style={{ color: s.id === selectedStoreId ? s.tagColor : undefined }}>
                       {s.name}
-                      {s.id === selectedStoreId && <span className="ml-2 text-xs font-normal text-indigo-400">当前</span>}
+                      {s.id === selectedStoreId && <span className="ml-2 text-xs font-normal text-blue-400">当前</span>}
                     </div>
                     <div className="text-xs text-gray-400 mt-0.5">
                       {s.plans.length}个计划 · 费比{(s.storeConfig.febi * 100).toFixed(1)}% · 毛利{(s.storeConfig.grossMargin * 100).toFixed(0)}%

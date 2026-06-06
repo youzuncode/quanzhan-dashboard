@@ -20,7 +20,7 @@ type Tab = 'overview' | 'log' | 'eval' | 'config' | 'backtest'
 
 const layerStyle = (layer: string) => ({
   H: { bg: '#fff3e0', color: '#e65100' },
-  D: { bg: '#e8eaf6', color: '#283593' },
+  D: { bg: '#e8f0fe', color: '#1557b0' },
   W: { bg: '#e8f5e9', color: '#2e7d32' },
 }[layer] ?? { bg: '#f5f5f5', color: '#666' })
 
@@ -404,9 +404,9 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
   )
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#f3f4f6', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#f6f8fa', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px', height: 56, flexShrink: 0, background: 'linear-gradient(135deg,#283593,#1565c0)', color: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px', height: 56, flexShrink: 0, background: 'linear-gradient(135deg,#1557b0,#1a73e8)', color: '#fff' }}>
         <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)', color: '#fff', cursor: 'pointer' }}>
           ← 返回看板
         </button>
@@ -445,12 +445,12 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
           <button key={t.k} onClick={() => setTab(t.k)}
             style={{
               padding: '10px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              borderBottom: tab === t.k ? '2px solid #283593' : '2px solid transparent',
+              borderBottom: tab === t.k ? '2px solid #1557b0' : '2px solid transparent',
               marginBottom: -2, background: 'none', border: 'none',
               borderBottomStyle: 'solid',
               borderBottomWidth: 2,
-              borderBottomColor: tab === t.k ? '#283593' : 'transparent',
-              color: tab === t.k ? '#283593' : '#6b7280', whiteSpace: 'nowrap',
+              borderBottomColor: tab === t.k ? '#1557b0' : 'transparent',
+              color: tab === t.k ? '#1557b0' : '#6b7280', whiteSpace: 'nowrap',
             }}>
             {t.l}
           </button>
@@ -467,10 +467,10 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
             {/* KPI row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
               {([
-                ['总触发次数', totalTriggers, '#283593'],
+                ['总触发次数', totalTriggers, '#1557b0'],
                 ['待确认', totalPending, totalPending ? '#c62828' : '#2e7d32'],
                 ['自动执行率', autoRate + '%', '#2e7d32'],
-                ['涉及计划数', activePlans, '#283593'],
+                ['涉及计划数', activePlans, '#1557b0'],
                 ['规则条数', allRules.length, '#666'],
               ] as [string, string | number, string][]).map(([l, v, c], i) => (
                 <div key={i} style={{ background: '#fff', borderRadius: 12, padding: '12px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
@@ -485,7 +485,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
               <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>规则清单</span>
               <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>内置 {RULE_DEFS.length} + 自定义 {customRules.length}</span>
               <button onClick={() => setShowRuleBuilder(true)}
-                style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6d28d9,#4338ca)', color: '#fff', cursor: 'pointer' }}>
+                style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#1a73e8,#1557b0)', color: '#fff', cursor: 'pointer' }}>
                 ＋ 新建规则
               </button>
             </div>
@@ -511,8 +511,8 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                       <span style={{ fontSize: 16 }}>{rd.icon}</span>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: ls.bg, color: ls.color }}>{rd.layerFull}</span>
                       <span style={{ fontWeight: 700, fontSize: 11, flex: 1 }}>{rd.key} · {rd.label}</span>
-                      {(rd as Partial<CustomRule>).custom && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede9fe', color: '#6d28d9' }}>自定义</span>}
-                      {ruleEnabled[rd.key] === false && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#f3f4f6', color: '#9ca3af' }}>已停用</span>}
+                      {(rd as Partial<CustomRule>).custom && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#e8f0fe', color: '#1a73e8' }}>自定义</span>}
+                      {ruleEnabled[rd.key] === false && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#f6f8fa', color: '#9ca3af' }}>已停用</span>}
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: rd.auto ? '#e8f5e9' : '#fff8e1', color: rd.auto ? '#2e7d32' : '#f57f17' }}>
                         {rd.auto ? '自动' : '确认'}
                       </span>
@@ -531,7 +531,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                           <div style={{ fontSize: 10, color: '#9ca3af' }}>待确认</div>
                         </div>
                         <div style={{ textAlign: 'center', padding: '4px', background: '#fafafa', borderRadius: 6 }}>
-                          <div style={{ fontWeight: 800, fontSize: 14, color: '#283593' }}>{e.successRate}%</div>
+                          <div style={{ fontWeight: 800, fontSize: 14, color: '#1557b0' }}>{e.successRate}%</div>
                           <div style={{ fontSize: 10, color: '#9ca3af' }}>执行率</div>
                         </div>
                         <div style={{ textAlign: 'center', padding: '4px', background: '#fafafa', borderRadius: 6 }}>
@@ -556,11 +556,11 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                       {/* scope + actions footer */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px dashed #f0f0f0', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 10, color: '#9ca3af' }}>作用范围</span>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: (ruleScope[rd.key]?.mode && ruleScope[rd.key].mode !== 'all') ? '#6d28d9' : '#6b7280', background: (ruleScope[rd.key]?.mode && ruleScope[rd.key].mode !== 'all') ? '#ede9fe' : '#f3f4f6', padding: '1px 7px', borderRadius: 10 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: (ruleScope[rd.key]?.mode && ruleScope[rd.key].mode !== 'all') ? '#1a73e8' : '#6b7280', background: (ruleScope[rd.key]?.mode && ruleScope[rd.key].mode !== 'all') ? '#e8f0fe' : '#f3f4f6', padding: '1px 7px', borderRadius: 10 }}>
                           {scopeLabel(rd.key)}
                         </span>
                         <button onClick={() => setScopeFor(rd.key)}
-                          style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#4338ca', cursor: 'pointer' }}>
+                          style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#1557b0', cursor: 'pointer' }}>
                           设置范围
                         </button>
                         {(rd as Partial<CustomRule>).custom && (
@@ -704,8 +704,8 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                     <XAxis dataKey="date" tick={{ fontSize: 9 }} interval={Math.max(0, Math.floor(alignChartData.length / 10))} />
                     <YAxis tick={{ fontSize: 9 }} tickFormatter={v => (v * 100).toFixed(0) + '%'} />
                     <Tooltip formatter={(v) => typeof v === 'number' ? (v * 100).toFixed(2) + '%' : v} />
-                    <ReferenceLine x={alignDate || dateList[Math.floor(dateList.length / 2)]} stroke="#6d28d9" strokeWidth={1.5} strokeDasharray="4 2" label={{ value: '生效日', fontSize: 9, fill: '#6d28d9', position: 'top' }} />
-                    <Line type="monotone" dataKey="febi" stroke="#283593" strokeWidth={2} dot={false} name="全店费比" />
+                    <ReferenceLine x={alignDate || dateList[Math.floor(dateList.length / 2)]} stroke="#1a73e8" strokeWidth={1.5} strokeDasharray="4 2" label={{ value: '生效日', fontSize: 9, fill: '#1a73e8', position: 'top' }} />
+                    <Line type="monotone" dataKey="febi" stroke="#1557b0" strokeWidth={2} dot={false} name="全店费比" />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -770,7 +770,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '5px 0', borderBottom: '1px solid #f3f4f6' }}>
                       <span style={{ color: '#6b7280' }}>执行率</span>
-                      <span style={{ fontWeight: 700, color: '#283593' }}>{e.successRate}%</span>
+                      <span style={{ fontWeight: 700, color: '#1557b0' }}>{e.successRate}%</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '5px 0' }}>
                       <span style={{ color: '#6b7280' }}>待确认</span>
@@ -832,7 +832,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                   <tbody>
                     {(['H', 'D', 'W'] as const).map(layer => {
                       const layerParams = params.filter(p => p.layer === layer)
-                      const headers = { H: { bg: '#fff3e0', color: '#e65100', label: '🕐 小时层规则（H）' }, D: { bg: '#e8eaf6', color: '#283593', label: '📅 日层规则（D）' }, W: { bg: '#e8f5e9', color: '#2e7d32', label: '📆 周层规则（W）' } }
+                      const headers = { H: { bg: '#fff3e0', color: '#e65100', label: '🕐 小时层规则（H）' }, D: { bg: '#e8f0fe', color: '#1557b0', label: '📅 日层规则（D）' }, W: { bg: '#e8f5e9', color: '#2e7d32', label: '📆 周层规则（W）' } }
                       const h = headers[layer]
                       return [
                         <tr key={`hdr-${layer}`} style={{ background: h.bg }}>
@@ -854,10 +854,10 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                                   style={{
                                     width: '100%', minWidth: 120, border: `1.5px solid ${isDirty ? '#f59e0b' : '#e5e7eb'}`,
                                     borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 700,
-                                    color: isDirty ? '#92400e' : '#283593', background: isDirty ? '#fffde7' : '#f9fafb',
+                                    color: isDirty ? '#92400e' : '#1557b0', background: isDirty ? '#fffde7' : '#f9fafb',
                                     outline: 'none', boxSizing: 'border-box',
                                   }}
-                                  onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                                  onFocus={e => (e.target.style.borderColor = '#1a73e8')}
                                   onBlur={e => (e.target.style.borderColor = isDirty ? '#f59e0b' : '#e5e7eb')}
                                 />
                               </td>
@@ -892,7 +892,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                     <button onClick={resetParams} style={{ padding: '6px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>
                       重置默认
                     </button>
-                    <button onClick={saveParams} style={{ padding: '6px 20px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#283593,#1565c0)', color: '#fff', cursor: 'pointer' }}>
+                    <button onClick={saveParams} style={{ padding: '6px 20px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#1557b0,#1a73e8)', color: '#fff', cursor: 'pointer' }}>
                       ✓ 保存配置
                     </button>
                   </div>
@@ -967,7 +967,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
               ))}
 
               {/* D layer */}
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#283593', background: '#e8eaf6', padding: '3px 6px', borderRadius: 4, marginBottom: 4, marginTop: 8 }}>📅 日层</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#1557b0', background: '#e8f0fe', padding: '3px 6px', borderRadius: 4, marginBottom: 4, marginTop: 8 }}>📅 日层</div>
               {allRules.filter(r => r.layer === 'D').map(r => (
                 <label key={r.key} title={ruleEnabled[r.key] === false ? '该规则已在「规则参数」中停用' : undefined}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: ruleEnabled[r.key] === false ? 'not-allowed' : 'pointer', marginBottom: 4, opacity: ruleEnabled[r.key] === false ? 0.4 : 1 }}>
@@ -1004,7 +1004,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
               <button
                 onClick={handleRunBacktest}
                 disabled={!!btError}
-                style={{ width: '100%', padding: '9px', marginTop: btError ? 8 : 14, borderRadius: 8, background: btError ? '#cbd5e1' : '#3730a3', color: '#fff', fontWeight: 700, fontSize: 12, cursor: btError ? 'not-allowed' : 'pointer', border: 'none' }}>
+                style={{ width: '100%', padding: '9px', marginTop: btError ? 8 : 14, borderRadius: 8, background: btError ? '#cbd5e1' : '#1557b0', color: '#fff', fontWeight: 700, fontSize: 12, cursor: btError ? 'not-allowed' : 'pointer', border: 'none' }}>
                 ▶ 运行回测
               </button>
               <div style={{ marginTop: 8, fontSize: 9, color: '#9ca3af', lineHeight: 1.5 }}>
@@ -1032,9 +1032,9 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                     {([
                       ['预计ROI改善', btResult.avgRoiImprove > 0 ? `+${btResult.avgRoiImprove.toFixed(2)}` : btResult.avgRoiImprove.toFixed(2), btResult.avgRoiImprove >= 0 ? '#2e7d32' : '#c62828'],
                       ['预计费比改善', btResult.avgFebiImprove > 0 ? `-${(btResult.avgFebiImprove * 100).toFixed(1)}pp` : `+${(Math.abs(btResult.avgFebiImprove) * 100).toFixed(1)}pp`, btResult.avgFebiImprove >= 0 ? '#2e7d32' : '#c62828'],
-                      ['触发总次数', btResult.totalTriggers, '#3730a3'],
+                      ['触发总次数', btResult.totalTriggers, '#1557b0'],
                       ['自动执行次数', btResult.autoCount, '#2e7d32'],
-                      ['预算优化额(窗口)', `¥${Math.round(btResult.budgetSaved).toLocaleString()}`, btResult.budgetSaved >= 0 ? '#1565c0' : '#c62828'],
+                      ['预算优化额(窗口)', `¥${Math.round(btResult.budgetSaved).toLocaleString()}`, btResult.budgetSaved >= 0 ? '#1a73e8' : '#c62828'],
                     ] as [string, string | number, string][]).map(([l, v, c], i) => (
                       <div key={i} style={{ background: '#fff', borderRadius: 10, padding: 10, textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
                         <div style={{ fontSize: 18, fontWeight: 800, color: c }}>{v}</div>
@@ -1060,7 +1060,7 @@ export function RuleEnginePage({ onClose, plans: propPlans }: Props) {
                           <YAxis tick={{ fontSize: 9 }} tickFormatter={v => (v * 100).toFixed(1) + '%'} />
                           <Tooltip formatter={(v) => typeof v === 'number' ? (v * 100).toFixed(2) + '%' : v} />
                           <Line type="monotone" dataKey="noRule" stroke="#c62828" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="无规则" />
-                          <Line type="monotone" dataKey="withRule" stroke="#283593" strokeWidth={2} dot={false} name="有规则" />
+                          <Line type="monotone" dataKey="withRule" stroke="#1557b0" strokeWidth={2} dot={false} name="有规则" />
                           <Line type="monotone" dataKey="target" stroke="#2e7d32" strokeWidth={1} strokeDasharray="2 2" dot={false} name="利润目标" />
                         </ComposedChart>
                       </ResponsiveContainer>
@@ -1154,7 +1154,7 @@ function ScopeModal({ ruleKey, plans, value, onSave, onClose }: {
       <div className="fixed inset-0 z-[60] bg-black/40" onClick={onClose} />
       <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none p-6">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-full overflow-auto pointer-events-auto">
-          <div style={{ background: 'linear-gradient(135deg,#4338ca,#6d28d9)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ background: 'linear-gradient(135deg,#1557b0,#1a73e8)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>🎯 作用范围 · {ruleKey}</div>
             <button onClick={onClose} style={{ color: 'rgba(255,255,255,.8)', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
           </div>
@@ -1162,7 +1162,7 @@ function ScopeModal({ ruleKey, plans, value, onSave, onClose }: {
             <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
               {([['all', '全部计划'], ['zone', '按区间'], ['plans', '手选计划']] as [ScopeMode, string][]).map(([m, l]) => (
                 <button key={m} onClick={() => setMode(m)}
-                  style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${mode === m ? '#6d28d9' : '#e5e7eb'}`, background: mode === m ? '#ede9fe' : '#fff', color: mode === m ? '#6d28d9' : '#6b7280' }}>
+                  style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${mode === m ? '#1a73e8' : '#e5e7eb'}`, background: mode === m ? '#e8f0fe' : '#fff', color: mode === m ? '#1a73e8' : '#6b7280' }}>
                   {l}
                 </button>
               ))}
@@ -1176,7 +1176,7 @@ function ScopeModal({ ruleKey, plans, value, onSave, onClose }: {
                   const on = zones.includes(z)
                   return (
                     <button key={z} onClick={() => setZones(on ? zones.filter(x => x !== z) : [...zones, z])}
-                      style={{ flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${on ? '#6d28d9' : '#e5e7eb'}`, background: on ? '#ede9fe' : '#fff', color: on ? '#6d28d9' : '#9ca3af' }}>
+                      style={{ flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${on ? '#1a73e8' : '#e5e7eb'}`, background: on ? '#e8f0fe' : '#fff', color: on ? '#1a73e8' : '#9ca3af' }}>
                       {l}
                     </button>
                   )
@@ -1201,7 +1201,7 @@ function ScopeModal({ ruleKey, plans, value, onSave, onClose }: {
 
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
               <button onClick={onClose} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>取消</button>
-              <button onClick={() => onSave({ mode, zones, planNames })} style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#4338ca,#6d28d9)', color: '#fff', cursor: 'pointer' }}>保存范围</button>
+              <button onClick={() => onSave({ mode, zones, planNames })} style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#1557b0,#1a73e8)', color: '#fff', cursor: 'pointer' }}>保存范围</button>
             </div>
           </div>
         </div>
@@ -1244,7 +1244,7 @@ function RuleBuilderModal({ existingKeys, onSave, onClose }: {
       <div className="fixed inset-0 z-[60] bg-black/40" onClick={onClose} />
       <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none p-6">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-full overflow-auto pointer-events-auto">
-          <div style={{ background: 'linear-gradient(135deg,#6d28d9,#4338ca)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ background: 'linear-gradient(135deg,#1a73e8,#1557b0)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>🧩 新建自定义规则</div>
               <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 11, marginTop: 2 }}>规则编号 {nextKey} · 保存后与内置规则并列,可参与回测</div>
@@ -1262,7 +1262,7 @@ function RuleBuilderModal({ existingKeys, onSave, onClose }: {
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>层级</label>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {(['H', 'D', 'W'] as const).map(l => (
-                    <button key={l} onClick={() => setLayer(l)} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${layer === l ? '#6d28d9' : '#e5e7eb'}`, background: layer === l ? '#ede9fe' : '#fff', color: layer === l ? '#6d28d9' : '#9ca3af' }}>{layerFullMap[l]}</button>
+                    <button key={l} onClick={() => setLayer(l)} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${layer === l ? '#1a73e8' : '#e5e7eb'}`, background: layer === l ? '#e8f0fe' : '#fff', color: layer === l ? '#1a73e8' : '#9ca3af' }}>{layerFullMap[l]}</button>
                   ))}
                 </div>
               </div>
@@ -1270,7 +1270,7 @@ function RuleBuilderModal({ existingKeys, onSave, onClose }: {
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>执行方式</label>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {([[false, '👤 人工确认'], [true, '🤖 自动']] as [boolean, string][]).map(([a, l]) => (
-                    <button key={String(a)} onClick={() => setAuto(a)} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${auto === a ? '#6d28d9' : '#e5e7eb'}`, background: auto === a ? '#ede9fe' : '#fff', color: auto === a ? '#6d28d9' : '#9ca3af' }}>{l}</button>
+                    <button key={String(a)} onClick={() => setAuto(a)} style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${auto === a ? '#1a73e8' : '#e5e7eb'}`, background: auto === a ? '#e8f0fe' : '#fff', color: auto === a ? '#1a73e8' : '#9ca3af' }}>{l}</button>
                   ))}
                 </div>
               </div>
@@ -1297,7 +1297,7 @@ function RuleBuilderModal({ existingKeys, onSave, onClose }: {
 
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
               <button onClick={onClose} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' }}>取消</button>
-              <button onClick={save} disabled={!valid} style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: valid ? 'linear-gradient(135deg,#6d28d9,#4338ca)' : '#cbd5e1', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed' }}>创建规则</button>
+              <button onClick={save} disabled={!valid} style={{ flex: 2, padding: '9px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', background: valid ? 'linear-gradient(135deg,#1a73e8,#1557b0)' : '#cbd5e1', color: '#fff', cursor: valid ? 'pointer' : 'not-allowed' }}>创建规则</button>
             </div>
           </div>
         </div>

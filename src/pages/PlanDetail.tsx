@@ -162,7 +162,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
 
   if (!plan) return (
     <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
-      <button onClick={onClose} className="text-indigo-800 underline text-sm">返回看板</button>
+      <button onClick={onClose} className="text-blue-800 underline text-sm">返回看板</button>
     </div>
   )
 
@@ -224,7 +224,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
     <div className="fixed inset-0 z-50 bg-gray-100 flex flex-col overflow-hidden">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-5 h-14 text-white flex-shrink-0"
-        style={{ background: 'linear-gradient(135deg,#0a2f4e,#1565c0)' }}>
+        style={{ background: 'linear-gradient(135deg,#11294d,#1a73e8)' }}>
         <button onClick={onClose}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
           style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)' }}>
@@ -244,7 +244,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
       <div className="bg-white border-b border-gray-200 px-5 py-2.5 flex-shrink-0 overflow-x-auto">
         <div className="flex gap-0 min-w-max">
           {[
-            { label: '净目标投产比', val: plan.roiTarget.toFixed(1), sub: `≈${(100 / plan.roiTarget).toFixed(1)}%费比`, color: '#283593' },
+            { label: '净目标投产比', val: plan.roiTarget.toFixed(1), sub: `≈${(100 / plan.roiTarget).toFixed(1)}%费比`, color: '#1557b0' },
             { label: '今日费比', val: `${(plan.febi * 100).toFixed(1)}%`, sub: `止损线${(plan.gross * 100).toFixed(0)}%`, color: fcColor },
             { label: 'Gross毛利率', val: `${(plan.gross * 100).toFixed(0)}%`, sub: `目标费比${(plan.gross * 100 - 10).toFixed(0)}%`, color: '#212121' },
             { label: '止损ROI', val: String(stopLossROI), sub: '=1÷Gross', color: '#c62828' },
@@ -267,7 +267,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
         {tabs.map(t => (
           <button key={t.k} onClick={() => setActiveTab(t.k)}
             className={`px-4 py-2.5 text-xs font-semibold border-b-2 -mb-0.5 transition-colors whitespace-nowrap flex items-center gap-1
-              ${activeTab === t.k ? 'text-indigo-800 border-indigo-800' : 'text-gray-500 border-transparent hover:text-indigo-800'}`}>
+              ${activeTab === t.k ? 'text-blue-800 border-blue-800' : 'text-gray-500 border-transparent hover:text-blue-800'}`}>
             {t.l}
             {t.badge != null && t.badge > 0 && (
               <span className="bg-yellow-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 leading-none">{t.badge}</span>
@@ -293,14 +293,14 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
                       #fff9c4 ${pct(stopLossROI)}%, #fff9c4 ${pct(targetROI)}%,
                       #c8e6c9 ${pct(targetROI)}%, #c8e6c9 100%)`
                   }}>
-                  <div className="absolute top-0 h-full bg-indigo-800 rounded"
+                  <div className="absolute top-0 h-full bg-blue-800 rounded"
                     style={{ left: `${pct(plan.roiTarget)}%`, width: 3, marginTop: -4, height: 20 }} />
                 </div>
                 <div className="relative h-7 mt-1">
                   {[
                     { val: stopLossROI, label: `止损 ${stopLossROI}`, color: '#c62828' },
                     { val: targetROI, label: `目标 ${targetROI}`, color: '#2e7d32' },
-                    { val: plan.roiTarget, label: `当前 ${plan.roiTarget}`, color: '#283593' },
+                    { val: plan.roiTarget, label: `当前 ${plan.roiTarget}`, color: '#1557b0' },
                   ].map((m, i) => (
                     <div key={i} className="absolute text-center" style={{ left: `${pct(m.val)}%`, transform: 'translateX(-50%)' }}>
                       <div className="text-xs font-bold whitespace-nowrap" style={{ color: m.color }}>{m.label}</div>
@@ -311,7 +311,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
                   <span className="text-red-700">■ 亏损区（费比&gt;Gross）</span>
                   <span className="text-yellow-600">■ 黄区（目标~止损之间）</span>
                   <span className="text-green-700">■ 绿区（费比&lt;目标费比）</span>
-                  <span className="text-indigo-800 font-bold">│ 当前ROI</span>
+                  <span className="text-blue-800 font-bold">│ 当前ROI</span>
                 </div>
               </div>
             </div>
@@ -322,7 +322,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
               <div className="p-3 space-y-2">
                 <div className="grid grid-cols-4 gap-2">
                   {[
-                    { label: '净目标投产比', val: plan.roiTarget.toFixed(1), sub: `≈${(100 / plan.roiTarget).toFixed(1)}% 费比`, color: '#283593', bg: '#e8eaf6' },
+                    { label: '净目标投产比', val: plan.roiTarget.toFixed(1), sub: `≈${(100 / plan.roiTarget).toFixed(1)}% 费比`, color: '#1557b0', bg: '#e8f0fe' },
                     { label: '今日费比', val: `${(plan.febi * 100).toFixed(1)}%`, sub: `止损线 ${(plan.gross * 100).toFixed(0)}%`, color: fcColor, bg: fc === 'red' ? '#ffebee' : fc === 'yellow' ? '#fff8e1' : '#e8f5e9' },
                     { label: 'Gross毛利率', val: `${(plan.gross * 100).toFixed(0)}%`, sub: `目标费比 ${(plan.gross * 100 - 10).toFixed(0)}%`, color: '#212121', bg: '#f5f5f5' },
                     { label: 'ROI余量', val: `${+roiGap > 0 ? '+' : ''}${roiGap}pp`, sub: plan.zone === 'red' ? '⚠ 亏损' : plan.zone === 'yellow' ? '▲ 接近止损' : '✓ 安全余量', color: { red: '#c62828', yellow: '#f57f17', green: '#2e7d32' }[plan.zone], bg: plan.zone === 'red' ? '#ffebee' : plan.zone === 'yellow' ? '#fff8e1' : '#e8f5e9' },
@@ -389,8 +389,8 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
                   { roi: 7, label: 'ROI 7', cls: '' },
                   { roi: 10, label: 'ROI 10', cls: '' },
                 ].map((r, i) => {
-                  const color = r.cls === 'red' ? '#c62828' : r.cls === 'green' ? '#2e7d32' : r.cls === 'indigo' ? '#283593' : '#546e7a'
-                  const bg = r.cls === 'red' ? '#ffebee' : r.cls === 'green' ? '#e8f5e9' : r.cls === 'indigo' ? '#e8eaf6' : '#f5f5f5'
+                  const color = r.cls === 'red' ? '#c62828' : r.cls === 'green' ? '#2e7d32' : r.cls === 'indigo' ? '#1557b0' : '#546e7a'
+                  const bg = r.cls === 'red' ? '#ffebee' : r.cls === 'green' ? '#e8f5e9' : r.cls === 'indigo' ? '#e8f0fe' : '#f5f5f5'
                   return (
                     <div key={i} className="rounded-lg p-2 text-center" style={{ background: bg }}>
                       <div className="text-xs text-gray-500 mb-1">{r.label}</div>
@@ -428,7 +428,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
                       <div key={key} className="flex gap-4 py-3 border-b border-gray-100 last:border-0">
                         {/* Timeline left col */}
                         <div className="flex flex-col items-center flex-shrink-0" style={{ width: 52 }}>
-                          <div className="text-xs font-bold text-indigo-800">{t.time}</div>
+                          <div className="text-xs font-bold text-blue-800">{t.time}</div>
                           <div className={`w-2.5 h-2.5 rounded-full mt-1.5
                             ${dotCls === 'ok' ? 'bg-green-600' : dotCls === 'pending' ? 'bg-yellow-500 animate-pulse' : 'bg-gray-300'}`} />
                         </div>
@@ -452,7 +452,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
                                 : '✗ 已忽略'}
                             </span>
                           </div>
-                          <div className="text-xs text-indigo-800 font-semibold bg-indigo-50 rounded px-2 py-1.5 mb-2">
+                          <div className="text-xs text-blue-800 font-semibold bg-blue-50 rounded px-2 py-1.5 mb-2">
                             ⚙️ {t.action}
                           </div>
                           <div className="text-xs text-gray-500 mb-2">操作方：{st?.operator || t.operator}</div>
@@ -496,7 +496,7 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
                                     <span className="text-gray-400 text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-bold w-fit">{p.change}</span>
                                     <span className="text-gray-400 line-through">{p.before}</span>
                                     <span className="text-gray-400 px-2">→</span>
-                                    <span className={`font-bold ${p.dir === 'up' ? 'text-green-700' : p.dir === 'down' ? 'text-red-700' : 'text-indigo-800'}`}>{p.after}</span>
+                                    <span className={`font-bold ${p.dir === 'up' ? 'text-green-700' : p.dir === 'down' ? 'text-red-700' : 'text-blue-800'}`}>{p.after}</span>
                                   </div>
                                 ))}
                               </div>
@@ -534,9 +534,9 @@ export function PlanDetail({ planName, storePlans, onClose }: Props) {
                       <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="px-3 py-1.5 font-bold whitespace-nowrap">{h.date}</td>
                         <td className="px-3 py-1.5">
-                          <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">{h.rule}</span>
+                          <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">{h.rule}</span>
                         </td>
-                        <td className="px-3 py-1.5 text-indigo-800 max-w-xs">{h.action}</td>
+                        <td className="px-3 py-1.5 text-blue-800 max-w-xs">{h.action}</td>
                         <td className={`px-3 py-1.5 whitespace-nowrap ${resultCls[h.result] || ''}`}>{resultLbl[h.result] || h.result}</td>
                         <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">{h.operator}</td>
                         <td className="px-3 py-1.5 text-gray-400 text-xs">{h.note || '—'}</td>
@@ -715,7 +715,7 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
       ctx.fillRect(x - barW / 2, pad.top + ch - barH, barW, barH)
     })
     // Draw metric line
-    ctx.strokeStyle = metricKey === 'roi' ? '#283593' : metricKey === 'febi' ? '#f57f17' : '#1565c0'
+    ctx.strokeStyle = metricKey === 'roi' ? '#1557b0' : metricKey === 'febi' ? '#f57f17' : '#1a73e8'
     ctx.lineWidth = 2; ctx.setLineDash([])
     ctx.beginPath()
     curData.forEach((d, i) => {
@@ -771,7 +771,7 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
       ctx.fillText(d.date, pad.left + i * step + step / 2, pad.top + ch + 12)
     })
     // Y axis right (metric)
-    ctx.textAlign = 'right'; ctx.fillStyle = '#283593'
+    ctx.textAlign = 'right'; ctx.fillStyle = '#1557b0'
     for (let i = 0; i <= 4; i++) {
       const v = minMetric + (maxMetric - minMetric) * (i / 4)
       const y = pad.top + ch - (i / 4) * ch
@@ -868,13 +868,13 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
   const cO = cmpData.reduce((a, d) => a + (d.orders || 0), 0)
 
   const METRIC_PILLS = [
-    { key: 'roi', label: 'ROI', color: '#283593' },
+    { key: 'roi', label: 'ROI', color: '#1557b0' },
     { key: 'febi', label: '费比', color: '#f57f17' },
-    { key: 'spend', label: '花费', color: '#1565c0' },
+    { key: 'spend', label: '花费', color: '#1a73e8' },
     { key: 'rev', label: '成交额', color: '#2e7d32' },
     { key: 'orders', label: '成交笔数', color: '#00838f' },
     { key: 'ctr', label: '点击率', color: '#546e7a' },
-    { key: 'cvr', label: '转化率', color: '#6a1fa2' },
+    { key: 'cvr', label: '转化率', color: '#1557b0' },
     { key: 'impr', label: '展示数', color: '#37474f' },
     { key: 'clicks', label: '点击数', color: '#37474f' },
     { key: 'addcart', label: '加购数', color: '#ad1457' },
@@ -889,11 +889,11 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
                 📈 推广效果数据
                 <div className="ml-auto flex rounded-lg overflow-hidden border border-gray-200">
                   <button onClick={() => setDataSub('daily')}
-                    className={`px-3 py-1 text-xs font-semibold ${dataSub === 'daily' ? 'bg-indigo-800 text-white' : 'bg-white text-gray-600'}`}>
+                    className={`px-3 py-1 text-xs font-semibold ${dataSub === 'daily' ? 'bg-blue-800 text-white' : 'bg-white text-gray-600'}`}>
                     📅 日数据（{curData.length}{agg === 'day' ? '天' : agg === 'week' ? '周' : '月'}）
                   </button>
                   <button onClick={() => setDataSub('hourly')}
-                    className={`px-3 py-1 text-xs font-semibold border-l border-gray-200 ${dataSub === 'hourly' ? 'bg-indigo-800 text-white' : 'bg-white text-gray-600'}`}>
+                    className={`px-3 py-1 text-xs font-semibold border-l border-gray-200 ${dataSub === 'hourly' ? 'bg-blue-800 text-white' : 'bg-white text-gray-600'}`}>
                     ⏰ 时数据（今日）
                   </button>
                 </div>
@@ -907,14 +907,14 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-gray-500">时间范围</span>
                       <input type="date" value={toInputVal(startDate)} onChange={e => { setStartDate(fromInputVal(e.target.value)); setPresetDays(null) }}
-                        className="border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:border-indigo-400" />
+                        className="border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:border-blue-400" />
                       <span className="text-gray-400">~</span>
                       <input type="date" value={toInputVal(endDate)} onChange={e => { setEndDate(fromInputVal(e.target.value)); setPresetDays(null) }}
-                        className="border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:border-indigo-400" />
+                        className="border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:border-blue-400" />
                       <span className="text-gray-300">|</span>
                       {([7, 14, 30] as const).map(n => (
                         <button key={n} onClick={() => setPreset(n)}
-                          className={`px-2 py-0.5 rounded-full border text-xs font-medium transition-all ${presetDays === n ? 'bg-indigo-800 text-white border-indigo-800' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-400'}`}>
+                          className={`px-2 py-0.5 rounded-full border text-xs font-medium transition-all ${presetDays === n ? 'bg-blue-800 text-white border-blue-800' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'}`}>
                           {n === 7 ? '近7天' : n === 14 ? '近14天' : '近30天'}
                         </button>
                       ))}
@@ -922,7 +922,7 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
                       <span className="font-semibold text-gray-500">聚合</span>
                       {(['day', 'week', 'month'] as const).map(a => (
                         <button key={a} onClick={() => setAgg(a)}
-                          className={`px-2 py-0.5 rounded-full border text-xs font-medium transition-all ${agg === a ? 'bg-indigo-800 text-white border-indigo-800' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-400'}`}>
+                          className={`px-2 py-0.5 rounded-full border text-xs font-medium transition-all ${agg === a ? 'bg-blue-800 text-white border-blue-800' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'}`}>
                           {a === 'day' ? '日' : a === 'week' ? '周' : '月'}
                         </button>
                       ))}
@@ -931,21 +931,21 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
                       <span className="font-semibold text-gray-500">对比区间</span>
                       <label className="relative inline-block w-8 h-4 cursor-pointer">
                         <input type="checkbox" className="sr-only" checked={cmpEnabled} onChange={e => setCmpEnabled(e.target.checked)} />
-                        <div className={`absolute inset-0 rounded-full transition-colors ${cmpEnabled ? 'bg-indigo-700' : 'bg-gray-300'}`} />
+                        <div className={`absolute inset-0 rounded-full transition-colors ${cmpEnabled ? 'bg-blue-700' : 'bg-gray-300'}`} />
                         <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${cmpEnabled ? 'translate-x-4' : ''}`} />
                       </label>
                       {cmpEnabled && (
                         <>
                           <input type="date" value={toInputVal(cmpStart)} onChange={e => setCmpStart(fromInputVal(e.target.value))}
-                            className="border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:border-indigo-400" />
+                            className="border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:border-blue-400" />
                           <span className="text-gray-400">~</span>
                           <input type="date" value={toInputVal(cmpEnd)} onChange={e => setCmpEnd(fromInputVal(e.target.value))}
-                            className="border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:border-indigo-400" />
+                            className="border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:border-blue-400" />
                           <button onClick={setPrevPeriod}
-                            className="px-2 py-0.5 rounded-full border border-gray-200 bg-white text-gray-500 hover:border-indigo-400 text-xs">
+                            className="px-2 py-0.5 rounded-full border border-gray-200 bg-white text-gray-500 hover:border-blue-400 text-xs">
                             ↩ 上一同期
                           </button>
-                          <span className="text-indigo-700 text-xs">对比期显示Δ%</span>
+                          <span className="text-blue-700 text-xs">对比期显示Δ%</span>
                         </>
                       )}
                     </div>
@@ -1026,7 +1026,7 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
                               </td>
                               <td className="px-2 py-1 text-left min-w-max">
                                 {d.rule && d.rule !== '—' && (
-                                  <span className="text-xs font-bold px-1 py-0.5 rounded mr-1 bg-indigo-100 text-indigo-800">{d.rule}</span>
+                                  <span className="text-xs font-bold px-1 py-0.5 rounded mr-1 bg-blue-100 text-blue-800">{d.rule}</span>
                                 )}
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${d.atype === 'red' ? 'bg-red-50 text-red-700 border border-red-200' : d.atype === 'yellow' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : d.atype === 'green' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-50 text-gray-500'}`}>
                                   {d.action}
@@ -1036,8 +1036,8 @@ function DataPane({ plan, stopLossROI, targetROI, allDailyData, hourlyData }: Da
                           )
                         })}
                         {/* Summary row */}
-                        <tr className="border-t-2 border-indigo-200 font-bold" style={{ background: '#e8eaf6' }}>
-                          <td className="px-2 py-1 text-indigo-800">合计/均值</td>
+                        <tr className="border-t-2 border-blue-200 font-bold" style={{ background: '#e8f0fe' }}>
+                          <td className="px-2 py-1 text-blue-800">合计/均值</td>
                           <td className="px-2 py-1 text-right">{fmtNum(totImpr)}</td>
                           <td className="px-2 py-1 text-right">{totClicks.toLocaleString()}</td>
                           <td className="px-2 py-1 text-right text-gray-400">—</td>

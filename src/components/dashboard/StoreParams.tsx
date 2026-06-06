@@ -22,12 +22,12 @@ export function StoreParams({ store }: Props) {
   const cardClass: Record<string, string> = {
     ok: 'border border-green-300 bg-green-50',
     warn: 'border border-yellow-400 bg-yellow-50',
-    act: 'border border-indigo-400 bg-indigo-50',
+    act: 'border border-blue-400 bg-blue-50',
   }
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-3 mb-2.5">
-      <div className="text-xs font-bold text-indigo-800 mb-2">⚙️ 全店参数 · 三线管控</div>
+      <div className="text-xs font-bold text-blue-800 mb-2">⚙️ 全店参数 · 三线管控</div>
       <div className="grid grid-cols-4 gap-2">
         <div className="border border-gray-200 rounded-lg p-2">
           <div className="text-xs text-gray-400 mb-1">T-2 Gross毛利率</div>
@@ -66,7 +66,7 @@ export function StoreParams({ store }: Props) {
           <div className="text-xs space-y-0.5 font-mono">
             {[4,5,6,7,8,10].map(roi => (
               <div key={roi} className={`flex justify-between px-1 py-0.5 rounded
-                ${roi === 7 ? 'bg-indigo-100 font-bold text-indigo-800' : 'text-gray-600'}`}>
+                ${roi === 7 ? 'bg-blue-100 font-bold text-blue-800' : 'text-gray-600'}`}>
                 <span>ROI {roi}</span>
                 <span>{(100/roi).toFixed(1)}%</span>
               </div>

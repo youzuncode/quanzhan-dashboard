@@ -24,9 +24,9 @@ const severityStyle: Record<string, { border: string; bg: string; action: string
     action: 'bg-green-100 text-green-700',
   },
   indigo: {
-    border: 'border-l-indigo-800',
-    bg: 'bg-indigo-50',
-    action: 'bg-indigo-100 text-indigo-800',
+    border: 'border-l-blue-800',
+    bg: 'bg-blue-50',
+    action: 'bg-blue-100 text-blue-800',
   },
 }
 
