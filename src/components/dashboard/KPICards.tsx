@@ -69,12 +69,13 @@ export function KPICards({ storeConfig: store, storePlans: plans }: Props) {
     },
   ]
 
-  const colorMap: Record<KpiColor, { bar: string; val: string }> = {
-    green: { bar: '#2e7d32', val: '#2e7d32' },
-    yellow: { bar: '#f57f17', val: '#f57f17' },
-    red: { bar: '#c62828', val: '#c62828' },
-    blue: { bar: '#1a73e8', val: '#1a73e8' },
-    indigo: { bar: '#1557b0', val: '#1557b0' },
+  // 科技数据屏:深底亮字。状态色统一提亮以适配深色背景
+  const colorMap: Record<KpiColor, { bar: string; val: string; glow: string }> = {
+    green: { bar: '#22c55e', val: '#4ade80', glow: 'rgba(34,197,94,.45)' },
+    yellow: { bar: '#f59e0b', val: '#fbbf24', glow: 'rgba(245,158,11,.45)' },
+    red: { bar: '#ef4444', val: '#f87171', glow: 'rgba(239,68,68,.45)' },
+    blue: { bar: '#1a73e8', val: '#60a5fa', glow: 'rgba(96,165,250,.5)' },
+    indigo: { bar: '#1557b0', val: '#7aa9ff', glow: 'rgba(122,169,255,.45)' },
   }
 
   return (
@@ -83,13 +84,23 @@ export function KPICards({ storeConfig: store, storePlans: plans }: Props) {
         const c = colorMap[k.cls]
         return (
           <div key={k.label}
-            style={{ background: '#fff', borderRadius: 12, padding: '10px 12px', boxShadow: '0 1px 4px rgba(0,0,0,.08)', position: 'relative', overflow: 'hidden' }}>
-            {/* 顶部 3px 彩色条 */}
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: c.bar }} />
-            <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>{k.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1, color: c.val }}>{k.val}</div>
-            <div style={{ fontSize: 10, color: '#aaa', marginTop: 4 }}>{k.sub}</div>
-            <div style={{ fontSize: 10, marginTop: 3, fontWeight: 600, color: k.tdir === 'up' ? '#2e7d32' : '#c62828' }}>
+            style={{
+              background: 'linear-gradient(150deg,#0f2748 0%,#15315a 100%)',
+              borderRadius: 12,
+              padding: '12px 14px',
+              border: '1px solid rgba(96,165,250,.18)',
+              boxShadow: '0 2px 10px rgba(8,22,48,.35)',
+              position: 'relative',
+              overflow: 'hidden',
+            }}>
+            {/* 顶部发光色条 */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: c.bar, boxShadow: `0 0 10px 1px ${c.glow}` }} />
+            {/* 右上角光晕装饰 */}
+            <div style={{ position: 'absolute', top: -28, right: -28, width: 70, height: 70, borderRadius: '50%', background: c.glow, filter: 'blur(24px)', opacity: 0.5 }} />
+            <div style={{ fontSize: 10, color: '#9fb6d4', marginBottom: 5, letterSpacing: 0.3, position: 'relative' }}>{k.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: c.val, textShadow: `0 0 14px ${c.glow}`, fontVariantNumeric: 'tabular-nums', position: 'relative' }}>{k.val}</div>
+            <div style={{ fontSize: 10, color: '#7e96b6', marginTop: 5, position: 'relative' }}>{k.sub}</div>
+            <div style={{ fontSize: 10, marginTop: 4, fontWeight: 600, color: k.tdir === 'up' ? '#4ade80' : '#f87171', position: 'relative' }}>
               {k.trend}
             </div>
           </div>
